@@ -156,7 +156,6 @@
     <div class="card">
       <div class="row between">
         <b id="l-count"></b>
-        <label class="mute"><input type="checkbox" id="l-hide" checked> Ẩn chữ</label>
       </div>
       <div class="lbl">Frage</div>
       <div id="l-q" class="de"></div>
@@ -174,7 +173,7 @@
         <button class="btn ghost" id="l-next">Sau ▶</button>
       </div>
     </div>
-    <p class="mute" style="font-size:14px">Mẹo: nghe câu hỏi với chữ bị ẩn, tự trả lời trong đầu, rồi bấm “Hiện chữ” để kiểm tra.</p>
+    <p class="mute" style="font-size:14px">Mẹo: nghe câu hỏi với chữ bị ẩn, tự trả lời trong đầu, rồi bấm “Hiện chữ” để kiểm tra – bấm lần nữa để ẩn lại.</p>
   </section>
 
   <!-- NÓI -->
@@ -547,10 +546,17 @@ function renderListen(it, count) {
   fillEx('#l-ex', it);
   $('#l-a-wrap').classList.toggle('hidden', !it.antwort);
   $('#l-pa').classList.toggle('hidden', !it.antwort);
-  const hide = $('#l-hide').checked;
-  ['#l-q', '#l-a', '#l-vi', '#l-ex'].forEach(s => $(s).classList.toggle('blur', hide));
+  // Mỗi câu mới bắt đầu ở trạng thái ẩn chữ (để luyện nghe); cùng một câu thì giữ nguyên trạng thái.
+  if (S.listenId !== it.id) { S.listenId = it.id; setListenShown(false); }
+  else setListenShown(!!S.listenShown);
 }
-function revealListen() { ['#l-q', '#l-a', '#l-vi', '#l-ex'].forEach(s => $(s).classList.remove('blur')); }
+/** Một nút duy nhất: đang ẩn → “👁 Hiện chữ”; đang hiện → “🙈 Ẩn chữ”. */
+function setListenShown(v) {
+  S.listenShown = v;
+  ['#l-q', '#l-a', '#l-vi', '#l-ex'].forEach(s => $(s).classList.toggle('blur', !v));
+  $('#l-show').textContent = v ? '🙈 Ẩn chữ' : '👁 Hiện chữ';
+}
+function revealListen() { setListenShown(true); }
 
 async function autoPlay() {
   const btn = $('#l-auto');
@@ -915,9 +921,8 @@ $('#jump').onchange = e => {
 };
 $('#l-pq').onclick = () => { S.token++; playQ(cur()); };
 $('#l-pa').onclick = () => { S.token++; playA(cur()); };
-$('#l-show').onclick = revealListen;
-['#l-q', '#l-a', '#l-vi', '#l-ex'].forEach(s => $(s).onclick = () => $(s).classList.remove('blur'));
-$('#l-hide').onchange = () => render();
+$('#l-show').onclick = () => setListenShown(!S.listenShown);
+['#l-q', '#l-a', '#l-vi', '#l-ex'].forEach(s => $(s).onclick = () => { if (!S.listenShown) setListenShown(true); });
 $('#l-prev').onclick = () => go(-1);
 $('#l-next').onclick = () => go(1);
 $('#l-auto').onclick = autoPlay;
