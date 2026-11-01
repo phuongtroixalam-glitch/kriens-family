@@ -176,6 +176,20 @@
         <button class="btn ghost" id="l-next">Sau ▶</button>
       </div>
     </div>
+    <div class="card" id="bg-card">
+      <b>🔒 Nghe khi tắt màn hình</b>
+      <p class="mute" style="font-size:14px;margin:6px 0 10px">Ghép các câu của phần đang chọn thành <b>một bản audio liền</b>. Bấm ▶ rồi khóa iPhone – audio vẫn phát tiếp như nghe nhạc.</p>
+      <div class="row mute" style="font-size:14px">
+        <label><input type="checkbox" id="bg-ans" checked> Kèm câu trả lời</label>
+        <label>Nghỉ giữa câu
+          <select id="bg-gap"><option value="2">2 giây</option><option value="3" selected>3 giây</option><option value="5">5 giây</option></select>
+        </label>
+      </div>
+      <button class="btn mt" id="bg-build">🎧 Tạo bản nghe</button>
+      <div id="bg-status" class="mute" style="font-size:14px;margin-top:8px"></div>
+      <audio id="bg-audio" controls class="hidden" style="width:100%;margin-top:8px"></audio>
+      <div id="bg-now" style="font-size:14px;margin-top:6px"></div>
+    </div>
     <p class="mute" style="font-size:14px">Mẹo: nghe câu hỏi với chữ bị ẩn, tự trả lời trong đầu, rồi bấm “Hiện chữ” để kiểm tra – bấm lần nữa để ẩn lại.</p>
   </section>
 
@@ -554,7 +568,7 @@ function render(auto) {
   prefetch(it); prefetch(S.items[S.order[(S.pos + 1) % S.order.length]]);
   const count = `Câu ${it.nr}  ·  ${S.pos + 1}/${S.order.length}`;
   updateMarkbar();
-  if (S.mode === 'listen') renderListen(it, count);
+  if (S.mode === 'listen') { renderListen(it, count); updateBgButton(); }
   else if (S.mode === 'speak') renderSpeak(it, count);
   else if (S.mode === 'quiz') renderQuiz(it, count, auto);
   else if (S.mode === 'list') renderList();
@@ -597,6 +611,116 @@ async function autoPlay() {
   }
   delete btn.dataset.on; btn.textContent = '⏯ Phát liên tục';
 }
+
+/* ---------------- NGHE KHI TẮT MÀN HÌNH ----------------
+ * iPhone dừng JavaScript khi khóa màn hình, nhưng vẫn phát tiếp MỘT file audio.
+ * Nên ta tải MP3 của từng câu, giải mã, ghép (câu hỏi → nghỉ → trả lời → nghỉ) thành một file WAV
+ * rồi phát bằng thẻ <audio>. Chỉ dùng được câu đã có MP3 (menu 🎧 WebApp › Tạo audio MP3).
+ */
+const BG = { url: null, offsets: [], rate: 16000, busy: false };
+
+function updateBgButton() {
+  if (!S.order.length || BG.busy) return;
+  const list = S.order.map(i => S.items[i]);
+  const ready = list.filter(it => it.audioF).length;
+  $('#bg-build').textContent = `🎧 Tạo bản nghe (${list.length} câu${$('#cat').value !== 'all' ? ' – ' + $('#cat').selectedOptions[0].text.replace(/\s*\(\d+\)$/, '') : ''})`;
+  $('#bg-status').textContent = ready < list.length
+    ? `⚠️ ${list.length - ready} câu chưa có file MP3 nên sẽ bị bỏ qua. Vào Sheet › menu 🎧 WebApp › “Tạo audio MP3” (chạy lại tới khi xong).`
+    : '';
+}
+function decodeMp3(ctx, arrayBuf) {
+  return new Promise(res => {
+    try {
+      const p = ctx.decodeAudioData(arrayBuf, b => res(b), () => res(null));
+      if (p && p.catch) p.catch(() => res(null));
+    } catch (e) { res(null); }
+  });
+}
+async function buildBg() {
+  if (BG.busy) return;
+  const withAns = $('#bg-ans').checked;
+  const gap = Number($('#bg-gap').value);
+  const list = S.order.map(i => S.items[i]).filter(it => it.audioF);
+  if (!list.length) { $('#bg-status').textContent = '⚠️ Chưa có câu nào có file MP3. Vào Sheet › menu 🎧 WebApp › “Tạo audio MP3”.'; return; }
+  BG.busy = true; S.token++; stopAll();
+  const btn = $('#bg-build'); btn.disabled = true;
+  const OAC = window.OfflineAudioContext || window.webkitOfflineAudioContext;
+  const ctx = new OAC(1, BG.rate, BG.rate);
+  // tải + giải mã song song (tối đa 4 cùng lúc)
+  const jobs = [];
+  list.forEach((it, i) => { jobs.push({ i, k: 'q', ref: it.audioF }); if (withAns && it.antwort && it.audioA) jobs.push({ i, k: 'a', ref: it.audioA }); });
+  const got = list.map(() => ({}));
+  let done = 0;
+  const worker = async () => {
+    while (jobs.length) {
+      const j = jobs.shift();
+      try {
+        const src = await audioSrc(j.ref);
+        if (src) got[j.i][j.k] = await decodeMp3(ctx, await (await fetch(src)).arrayBuffer());
+      } catch (e) { console.warn(e); }
+      done++;
+      $('#bg-status').textContent = `Đang chuẩn bị audio… ${done}/${done + jobs.length}`;
+    }
+  };
+  await Promise.all([worker(), worker(), worker(), worker()]);
+
+  // ghép
+  const chunks = [], offsets = [];
+  let total = 0;
+  const push = arr => { chunks.push(arr); total += arr.length; };
+  const silence = sec => push(new Float32Array(Math.round(sec * BG.rate)));
+  silence(0.5);
+  list.forEach((it, i) => {
+    const g = got[i];
+    if (!g.q) return;
+    offsets.push({ t: total / BG.rate, it });
+    push(g.q.getChannelData(0));
+    if (g.a) { silence(Math.max(1.5, gap - 0.5)); push(g.a.getChannelData(0)); }
+    silence(gap);
+  });
+  if (!offsets.length) {
+    $('#bg-status').textContent = '⚠️ Không giải mã được file audio nào. Thử lại hoặc tạo lại MP3 trong Sheet.';
+    BG.busy = false; btn.disabled = false; return;
+  }
+  const blob = encodeWav(chunks, total, BG.rate);
+  if (BG.url) URL.revokeObjectURL(BG.url);
+  BG.url = URL.createObjectURL(blob); BG.offsets = offsets;
+  const a = $('#bg-audio');
+  a.src = BG.url; a.defaultPlaybackRate = S.rate; a.playbackRate = S.rate;
+  a.classList.remove('hidden');
+  const mins = Math.floor(total / BG.rate / 60), secs = Math.round(total / BG.rate % 60);
+  $('#bg-status').textContent = `✅ Xong: ${offsets.length} câu, dài ${mins} phút ${secs} giây. Bấm ▶ rồi khóa màn hình.` +
+    (offsets.length < list.length ? ` (${list.length - offsets.length} câu lỗi file, đã bỏ qua)` : '');
+  if ('mediaSession' in navigator && window.MediaMetadata) {
+    try {
+      navigator.mediaSession.metadata = new MediaMetadata({
+        title: $('#cat').value === 'all' ? 'Tất cả câu hỏi' : $('#cat').selectedOptions[0].text,
+        artist: 'Einbürgerungskurs', album: S.member || ''
+      });
+    } catch (e) {}
+  }
+  BG.busy = false; btn.disabled = false;
+  btn.textContent = '🔄 Tạo lại bản nghe';
+}
+function encodeWav(chunks, total, rate) {
+  const buf = new ArrayBuffer(44 + total * 2), v = new DataView(buf);
+  const w = (o, s) => { for (let i = 0; i < s.length; i++) v.setUint8(o + i, s.charCodeAt(i)); };
+  w(0, 'RIFF'); v.setUint32(4, 36 + total * 2, true); w(8, 'WAVE'); w(12, 'fmt ');
+  v.setUint32(16, 16, true); v.setUint16(20, 1, true); v.setUint16(22, 1, true);
+  v.setUint32(24, rate, true); v.setUint32(28, rate * 2, true); v.setUint16(32, 2, true); v.setUint16(34, 16, true);
+  w(36, 'data'); v.setUint32(40, total * 2, true);
+  let o = 44;
+  chunks.forEach(c => { for (let i = 0; i < c.length; i++, o += 2) { const x = Math.max(-1, Math.min(1, c[i])); v.setInt16(o, x < 0 ? x * 0x8000 : x * 0x7fff, true); } });
+  return new Blob([buf], { type: 'audio/wav' });
+}
+$('#bg-build').onclick = buildBg;
+$('#bg-audio').ontimeupdate = () => {
+  const t = $('#bg-audio').currentTime;
+  let cur = null;
+  for (const o of BG.offsets) { if (o.t <= t + 0.05) cur = o; else break; }
+  $('#bg-now').textContent = cur ? `▶ Đang phát: Câu ${cur.it.nr} – ${cur.it.frage}` : '';
+};
+$('#bg-audio').onplay = () => { S.token++; stopAll(); };
 
 /* ---------------- NÓI ---------------- */
 const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
@@ -933,7 +1057,11 @@ $('#f-refresh').onclick = () => {
 
 /* ---------------- Sự kiện ---------------- */
 document.querySelectorAll('nav button').forEach(b => b.onclick = () => setMode(b.dataset.mode));
-$('#rate').onchange = e => { S.rate = Number(e.target.value); store.set('kriens_rate', S.rate); if (S.player) S.player.playbackRate = S.rate; };
+$('#rate').onchange = e => {
+  S.rate = Number(e.target.value); store.set('kriens_rate', S.rate);
+  if (S.player) S.player.playbackRate = S.rate;
+  const bg = $('#bg-audio'); bg.defaultPlaybackRate = S.rate; bg.playbackRate = S.rate;
+};
 $('#shuffle').onchange = () => { buildOrder(); render(); };
 $('#filter').onchange = () => { S.pos = 0; S.order = []; buildOrder(); S.pos = 0; render(true); };
 $('#cat').onchange = () => { store.set('kriens_cat', $('#cat').value); S.pos = 0; S.order = []; buildOrder(); S.pos = 0; render(true); };
