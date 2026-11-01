@@ -197,6 +197,7 @@
       <button class="btn mt" id="bg-build">🎧 Tạo bản nghe</button>
       <div id="bg-status" class="mute" style="font-size:14px;margin-top:8px"></div>
       <audio id="bg-audio" controls class="hidden" style="width:100%;margin-top:8px"></audio>
+      <button class="btn ghost mt hidden" id="bg-dl">💾 Tải về</button>
       <div id="bg-now" style="font-size:14px;margin-top:6px"></div>
     </div>
     <p class="mute" style="font-size:14px">Mẹo: nghe câu hỏi với chữ bị ẩn, tự trả lời trong đầu, rồi bấm “Hiện chữ” để kiểm tra – bấm lần nữa để ẩn lại.</p>
@@ -652,7 +653,7 @@ async function autoPlay() {
  * Nên ta tải MP3 của từng câu, giải mã, ghép (câu hỏi → nghỉ → trả lời → nghỉ) thành một file WAV
  * rồi phát bằng thẻ <audio>. Chỉ dùng được câu đã có MP3 (menu 🎧 WebApp › Tạo audio MP3).
  */
-const BG = { url: null, offsets: [], rate: 16000, busy: false };
+const BG = { url: null, offsets: [], rate: 16000, busy: false, blob: null, name: '' };
 
 function updateBgButton() {
   if (!S.order.length || BG.busy) return;
@@ -719,7 +720,13 @@ async function buildBg() {
   }
   const blob = encodeWav(chunks, total, BG.rate);
   if (BG.url) URL.revokeObjectURL(BG.url);
-  BG.url = URL.createObjectURL(blob); BG.offsets = offsets;
+  BG.url = URL.createObjectURL(blob); BG.offsets = offsets; BG.blob = blob;
+  const catName = $('#cat').value === 'all' ? 'Alle_Fragen' : $('#cat').selectedOptions[0].text.replace(/\s*\(\d+\)$/, '');
+  const d = new Date();
+  BG.name = ('Einbuergerungskurs_' + catName + '_' + d.getFullYear() + String(d.getMonth() + 1).padStart(2, '0') + String(d.getDate()).padStart(2, '0'))
+    .normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[–—]/g, '-').replace(/[^\w-]+/g, '_').replace(/_+/g, '_') + '.wav';
+  $('#bg-dl').classList.remove('hidden');
+  $('#bg-dl').textContent = '💾 Tải về (' + (blob.size / 1048576).toFixed(1) + ' MB)';
   const a = $('#bg-audio');
   a.src = BG.url; a.defaultPlaybackRate = S.rate; a.playbackRate = S.rate;
   a.classList.remove('hidden');
@@ -749,6 +756,23 @@ function encodeWav(chunks, total, rate) {
   return new Blob([buf], { type: 'audio/wav' });
 }
 $('#bg-build').onclick = buildBg;
+/** Lưu bản nghe về máy. iPhone: mở bảng Chia sẻ → chọn “Lưu vào Tệp” (hoặc AirDrop, gửi tin nhắn…). */
+$('#bg-dl').onclick = async () => {
+  if (!BG.blob) return;
+  try {
+    const file = new File([BG.blob], BG.name, { type: 'audio/wav' });
+    if (navigator.canShare && navigator.canShare({ files: [file] })) {
+      await navigator.share({ files: [file], title: BG.name });
+      return;
+    }
+  } catch (e) {
+    if (e && e.name === 'AbortError') return;     // người dùng đóng bảng Chia sẻ
+  }
+  const a = document.createElement('a');
+  a.href = BG.url; a.download = BG.name;
+  document.body.appendChild(a); a.click(); a.remove();
+  toast('Đã tải về: ' + BG.name);
+};
 $('#bg-audio').ontimeupdate = () => {
   const t = $('#bg-audio').currentTime;
   let cur = null;
