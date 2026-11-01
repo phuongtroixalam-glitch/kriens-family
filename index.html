@@ -487,9 +487,32 @@ function pickVoice() {
 }
 if ('speechSynthesis' in window) { pickVoice(); speechSynthesis.onvoiceschanged = pickVoice; }
 
+/* Một thẻ <audio> DUY NHẤT dùng cho mọi lần phát. iPhone chỉ cho phát tự động (không cần bấm)
+ * trên thẻ audio đã từng được "mở khóa" bằng một lần bấm của người dùng – nên ta mở khóa nó
+ * ở lần chạm đầu tiên, rồi dùng lại cho cả chế độ Phát liên tục. */
+const AUD = new Audio();
+AUD.preload = 'auto';
+AUD.setAttribute('playsinline', '');
+let audUnlocked = false, SILENT_URL = null;
+function unlockAudio() {
+  if (audUnlocked) return;
+  try {
+    if (!SILENT_URL) SILENT_URL = URL.createObjectURL(encodeWav([new Float32Array(800)], 800, 8000));
+    if (!AUD.src || AUD.paused) {
+      AUD.src = SILENT_URL;
+      const p = AUD.play();
+      if (p && p.then) p.then(() => { audUnlocked = true; }).catch(() => {});
+    }
+  } catch (e) {}
+}
+document.addEventListener('touchend', unlockAudio, true);
+document.addEventListener('click', unlockAudio, true);
+
 function stopAll() {
   if ('speechSynthesis' in window) speechSynthesis.cancel();
-  if (S.player) { S.player.pause(); S.player = null; }
+  if (AUD._fin) AUD._fin();          // báo cho đoạn code đang chờ rằng audio đã dừng
+  try { AUD.pause(); } catch (e) {}
+  S.player = null;
 }
 async function audioSrc(ref) {
   ref = String(ref || '').trim();
@@ -506,10 +529,24 @@ function prefetch(item) {
 }
 function playSrc(src, rate) {
   return new Promise(res => {
-    const a = new Audio(src);
-    S.player = a; a.playbackRate = rate || S.rate;
-    a.onended = res; a.onerror = res;
-    a.play().catch(res);
+    const a = AUD;
+    if (a._fin) a._fin();            // đoạn đang phát (nếu có) coi như kết thúc
+    let done = false;
+    const fin = () => {
+      if (done) return; done = true;
+      a.onended = a.onerror = a.onpause = null;
+      if (a._fin === fin) a._fin = null;
+      res();
+    };
+    a._fin = fin;
+    a.onended = fin; a.onerror = fin;
+    a.src = src;
+    a.defaultPlaybackRate = rate || S.rate;
+    a.playbackRate = rate || S.rate;
+    S.player = a;
+    const p = a.play();
+    if (p && p.then) p.then(() => { audUnlocked = true; a.playbackRate = rate || S.rate; a.onpause = fin; }).catch(fin);
+    else a.onpause = fin;
   });
 }
 function speak(text) {
@@ -632,10 +669,12 @@ function setListenShown(v) {
 }
 function revealListen() { setListenShown(true); }
 
+function resetAutoBtn() { const b = $('#l-auto'); delete b.dataset.on; b.textContent = '⏯ Phát liên tục'; }
 async function autoPlay() {
   const btn = $('#l-auto');
-  if (btn.dataset.on) { S.token++; stopAll(); return; }
+  if (btn.dataset.on) { S.token++; stopAll(); resetAutoBtn(); return; }
   const my = ++S.token;
+  S.autoMy = my;
   btn.dataset.on = '1'; btn.textContent = '⏹ Dừng';
   while (my === S.token) {
     const it = cur();
@@ -645,7 +684,7 @@ async function autoPlay() {
     revealListen(); await sleep(1500); if (my !== S.token) break;
     S.pos = (S.pos + 1) % S.order.length; render();
   }
-  delete btn.dataset.on; btn.textContent = '⏯ Phát liên tục';
+  if (S.autoMy === my) resetAutoBtn();
 }
 
 /* ---------------- NGHE KHI TẮT MÀN HÌNH ----------------
