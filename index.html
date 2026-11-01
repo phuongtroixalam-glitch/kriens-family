@@ -82,6 +82,7 @@
   .st-known{background:var(--ok-soft);color:var(--ok)}
   .st-review{background:#fff3d6;color:#a86d00}
   .st-learning{background:#e7eefc;color:#2f5bc0}
+  .st-warn{background:#fff3d6;color:#a86d00}
   .st-new{background:#eef0f5;color:var(--mute)}
   #toast{position:fixed;left:50%;bottom:18px;transform:translateX(-50%);background:#1d2433;color:#fff;padding:10px 14px;border-radius:10px;font-size:14px;z-index:30;max-width:90%}
 </style>
@@ -110,6 +111,7 @@
       <option value="1" selected>1×</option><option value="1.2">1.2×</option>
     </select>
   </label>
+  <select id="cat" class="hidden"><option value="all">Mọi chủ đề</option></select>
   <select id="filter">
     <option value="all">Tất cả câu</option>
     <option value="notknown">Chưa thuộc</option>
@@ -119,7 +121,7 @@
     <option value="known">✓ Đã thuộc</option>
   </select>
   <label><input type="checkbox" id="shuffle"> Xáo trộn</label>
-  <label>Câu số <input type="number" id="jump" min="1" style="width:64px"></label>
+  <label>Câu số <input type="text" inputmode="numeric" id="jump" style="width:56px"></label>
 </div>
 
 <div class="markbar hidden" id="markbar">
@@ -382,7 +384,11 @@ function status(it, member) {
   if (p.speakTries || p.qTry) return 'learning';
   return 'new';
 }
-const stBadge = it => { const s = STATUS[status(it)]; return `<span class="st ${s.cls}">${s.label}</span>`; };
+const stBadge = it => {
+  const s = STATUS[status(it)];
+  const warn = /cần kiểm tra|kiểm tra lại|unsicher|prüfen/i.test(it.quelle || '') ? '<span class="st st-warn" title="Đáp án chưa được xác minh – hỏi lại Stadt Kriens">⚠️ Đáp án cần kiểm tra</span>' : '';
+  return `<span class="st ${s.cls}">${s.label}</span>${warn}`;
+};
 function setMark(v) {
   const it = cur();
   if (!it || !S.member) return toast('Hãy chọn người học trước.');
@@ -495,17 +501,34 @@ const playQ = it => play(it.frage, it.audioF);
 const playA = it => play(it.antwort, it.audioA);
 
 /* ---------------- Điều hướng ---------------- */
+function catOf(it) { return it.kategorie || 'Khác'; }
 function inFilter(it) {
+  const c = $('#cat').value;
+  if (c !== 'all' && catOf(it) !== c && !(c === 'Schweiz' && /^Schweiz/.test(catOf(it)))) return false;
   const f = $('#filter').value, st = status(it);
   return f === 'all' || (f === 'notknown' ? st !== 'known' : st === f);
+}
+/** Bộ lọc chủ đề lấy từ cột Kategorie (Kriens, Schweiz – Staatskunde, …). */
+function buildCatFilter() {
+  const cats = [...new Set(S.items.map(catOf))];
+  const sel = $('#cat');
+  if (cats.length < 2) { sel.classList.add('hidden'); return; }
+  const keep = store.get('kriens_cat', 'all');
+  const hasSchweiz = cats.filter(c => /^Schweiz/.test(c)).length > 1;
+  sel.innerHTML = '<option value="all">Mọi chủ đề (' + S.items.length + ')</option>' +
+    (hasSchweiz ? `<option value="Schweiz">Schweiz – cả 4 phần (${S.items.filter(i => /^Schweiz/.test(catOf(i))).length})</option>` : '') +
+    cats.map(c => `<option value="${esc(c)}">${esc(c)} (${S.items.filter(i => catOf(i) === c).length})</option>`).join('');
+  sel.value = [...sel.options].some(o => o.value === keep) ? keep : 'all';
+  sel.classList.remove('hidden');
 }
 function buildOrder() {
   const keep = cur();
   S.order = S.items.map((_, i) => i).filter(i => inFilter(S.items[i]));
   if (!S.order.length) {
-    if ($('#filter').value !== 'all') toast('Không có câu nào ở mục “' + $('#filter').selectedOptions[0].text + '” – hiện tất cả câu.');
+    if ($('#filter').value !== 'all') toast('Không có câu nào ở mục “' + $('#filter').selectedOptions[0].text + '” – hiện tất cả câu của chủ đề này.');
     $('#filter').value = 'all';
-    S.order = S.items.map((_, i) => i);
+    S.order = S.items.map((_, i) => i).filter(i => inFilter(S.items[i]));
+    if (!S.order.length) { $('#cat').value = 'all'; S.order = S.items.map((_, i) => i); }
   }
   if ($('#shuffle').checked) {
     for (let i = S.order.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [S.order[i], S.order[j]] = [S.order[j], S.order[i]]; }
@@ -912,6 +935,7 @@ document.querySelectorAll('nav button').forEach(b => b.onclick = () => setMode(b
 $('#rate').onchange = e => { S.rate = Number(e.target.value); store.set('kriens_rate', S.rate); if (S.player) S.player.playbackRate = S.rate; };
 $('#shuffle').onchange = () => { buildOrder(); render(); };
 $('#filter').onchange = () => { S.pos = 0; S.order = []; buildOrder(); S.pos = 0; render(true); };
+$('#cat').onchange = () => { store.set('kriens_cat', $('#cat').value); S.pos = 0; S.order = []; buildOrder(); S.pos = 0; render(true); };
 document.querySelectorAll('.mk').forEach(b => b.onclick = () => setMark(Number(b.dataset.mark)));
 $('#jump').onchange = e => {
   const n = String(e.target.value).trim();
@@ -993,6 +1017,7 @@ function load() {
   return run('getData').then(d => {
   if (!IN_GAS) store.set('kriens_api', API_URL);
   S.items = normalizeItems(d.items || []);
+  buildCatFilter();
   S.members = d.members || [];
   S.progress = d.progress || {};
   $('#title').textContent = d.title;
