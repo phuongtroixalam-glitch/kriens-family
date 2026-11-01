@@ -1,59 +1,969 @@
-<!DOCTYPE html><html lang="vi"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><style>
-:root{font-family:system-ui,-apple-system,sans-serif;color:#18243b;background:#eef3f9}*{box-sizing:border-box}body{margin:0}.wrap{max-width:820px;margin:auto;padding:22px}.head{background:#17365d;color:white;padding:22px;border-radius:18px;margin-bottom:18px}h1{font-size:23px;margin:0 0 6px}.small{font-size:13px;opacity:.8}.card{background:white;padding:24px;border-radius:18px;box-shadow:0 8px 28px #15345515}.question{font-size:24px;font-weight:750;line-height:1.4}.answer{font-size:20px;line-height:1.5;color:#174f3e}.vi{line-height:1.6;color:#516075}.controls{display:flex;gap:8px;flex-wrap:wrap;margin:16px 0}button,select{border:1px solid #d4dfeb;border-radius:10px;background:white;padding:11px 14px;font:inherit;cursor:pointer}button.primary{background:#175b9b;color:white;border-color:#175b9b}button:disabled{opacity:.5}.toolbar{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin:14px 0}#heard{background:#f2f6fb;padding:14px;border-radius:10px;min-height:44px;white-space:pre-wrap}.warn{color:#9c5b00;font-size:13px}.muted{color:#69798d}.score{font-weight:700}label{font-size:14px}input[type=range]{width:120px}@media(max-width:500px){.wrap{padding:10px}.card{padding:17px}.question{font-size:21px}}
-</style></head><body><div class="wrap"><div class="head"><h1>🇨🇭 Einbürgerung Kriens – Sprachtrainer</h1><div class="small">Luyện nghe · nói · hiểu tiếng Đức</div></div><div class="toolbar"><label>Hồ sơ <select id="profile" onchange="switchProfile()"><option>Papa</option><option>Mama</option><option>Kind 1</option><option>Kind 2</option></select></label><select id="filter" onchange="applyFilter()"><option value="all">Tất cả câu</option><option value="Ôn lại">Cần ôn lại</option><option value="Chưa học">Chưa học</option><option value="Đang học">Đang học</option><option value="Đã thuộc">Đã thuộc</option></select><button onclick="shuffle()">🔀 Ngẫu nhiên</button><label>Tốc độ <span id="speedText">0.9×</span> <input id="speed" type="range" min="0.6" max="1.2" step="0.1" value="0.9" oninput="speedText.textContent=this.value+'×'"></label></div><p id="syncStatus" class="small muted">Đang dùng 45 câu hỏi dự phòng; thử kết nối Google Sheets…</p><div class="card"><div id="counter" class="muted">Đang tải...</div><div id="question" class="question"></div><div class="controls"><button class="primary" onclick="speak('question')">🔊 Nghe câu hỏi</button><button onclick="speak('answer')">🔊 Nghe đáp án</button><button onclick="toggle('answer')">Hiện/ẩn đáp án</button><button onclick="toggle('vi')">🇻🇳 Dịch tiếng Việt</button></div><div id="answer" class="answer" hidden></div><div id="vi" class="vi" hidden></div><p id="note" class="warn"></p><hr style="border:0;border-top:1px solid #e5eaf1"><div class="controls"><button class="primary" onclick="recordAnswer()">🎙️ Ghi âm câu trả lời</button><button onclick="stopRecording()">⏹ Dừng ghi</button><button onclick="playRecording()">▶️ Nghe lại</button><button onclick="listen()">📝 Nhận dạng (thử nghiệm)</button></div><audio id="playback" controls hidden style="width:100%;margin-top:12px"></audio><div id="heard" class="muted">Nhấn microphone và trả lời bằng tiếng Đức.</div><p id="score" class="score"></p><div class="controls"><button onclick="mark('Đã thuộc')">✓ Đã thuộc</button><button onclick="mark('Ôn lại')">↻ Ôn lại</button><button onclick="mark('Đang học')">Đang học</button></div><div class="controls"><button onclick="move(-1)">← Trước</button><button class="primary" onclick="move(1)">Tiếp →</button></div></div><p class="small muted">Bản ghi âm chỉ nằm tạm trên thiết bị trong phiên này, không lưu lên Google Sheets. Nhận dạng giọng nói phụ thuộc trình duyệt và có thể gửi âm thanh tới dịch vụ nhận dạng của nhà cung cấp trình duyệt. Điểm so sánh chỉ mang tính tham khảo, không phải đánh giá phát âm chuyên nghiệp.</p></div><script>
-let all=[],items=[],pos=0,recognition=null,mediaRecorder=null,mediaStream=null,audioChunks=[],recordingUrl=null,recordedQuestionId=null;let profile="Papa";
-// Paste your Apps Script /exec URL below. Never paste a password or secret.
-const API_URL='https://script.google.com/macros/s/AKfycbxEs5Yfez60gcnGju910cXKLIYV6gJjhX0qeuI5qqoFfUXYA0Q7vGt_6xwbEFyTJ4_C/exec';
-const BACKUP_QUESTIONS=[{"id":1,"category":"Kriens","question":"Wie heisst die Gemeinde / Stadt, in der Sie wohnen?","answer":"Ich wohne in Kriens.","vi":"Bạn sống ở xã/thành phố nào? — Tôi sống ở Kriens.","note":""},{"id":2,"category":"Kriens","question":"Welcher Kanton gehört Kriens an?","answer":"Kriens gehört zum Kanton Luzern.","vi":"Kriens thuộc bang nào? — Kriens thuộc bang Luzern.","note":""},{"id":3,"category":"Kriens","question":"Seit wann ist Kriens offiziell eine Stadt?","answer":"Kriens ist seit dem 1. Januar 2019 offiziell eine Stadt.","vi":"Kriens chính thức trở thành thành phố từ khi nào? — Từ ngày 1 tháng 1 năm 2019.","note":""},{"id":4,"category":"Kriens","question":"Wie heisst der aktuelle Stadtpräsident von Kriens?","answer":"Der Stadtpräsident von Kriens heisst Christine Kaufmann-Wolf","vi":"Thị trưởng Kriens tên là gì? — Thị trưởng là Christine Kaufmann-Wolf","note":"Kiểm tra chức danh / cách xưng hô"},{"id":5,"category":"Kriens","question":"Wie heisst der Hausberg von Kriens?","answer":"Der Hausberg von Kriens heisst Pilatus (2128m).","vi":"Ngọn núi biểu tượng của Kriens tên là gì? — Núi Pilatus (cao 2128m).","note":""},{"id":6,"category":"Kriens","question":"Aus welchen Farben besteht das Wappen von Kriens?","answer":"Das Wappen von Kriens besteht aus den Farben Grün und Weiss.","vi":"Huy hiệu Kriens gồm những màu nào? — Màu xanh lá cây và màu trắng.","note":"Màu sắc chưa đầy đủ: cần kiểm tra"},{"id":7,"category":"Kriens","question":"Was zeigt das Wappen von Kriens?","answer":"Das Wappen von Kriens zeigt den heiligen Gallus und einen schwarzen Bären, der ein gelbes Brot erhält. Gallus trägt eine schwarze Kutte und einen Abtstab.","vi":"Huy hiệu của Kriens mô tả Thánh Gallus và một con gấu đen đang nhận một ổ bánh mì màu vàng. Thánh Gallus mặc áo tu màu đen và cầm gậy của viện phụ.","note":""},{"id":8,"category":"Kriens","question":"Wie viele Einwohner und wie is gross hat die Stadt Kriens ungefähr?","answer":"Kriens hat ungefähr 29'000 Einwohner und die Fläche ist etwa 27.3 Quadratkilometer (km2).","vi":"Kriens có khoảng bao nhiêu dân và rộng như thế nào? — Khoảng 29.000 dân và rộng khoảng 27.3 km2","note":"Dân số có thể đã lỗi thời"},{"id":9,"category":"Kriens","question":"Wie nennt man die Einwohner von Kriens?","answer":"Die Einwohner von Kriens heissen Krienserinnen und Krienser.","vi":"Người dân Kriens được gọi là gì? — Krienserinnen (nữ) và Krienser (nam).","note":""},{"id":10,"category":"Kriens","question":"Wie heisst das neue Stadtzentrum / der zentrale Platz in Kriens?","answer":"Das Stadtzentrum heisst Stadtplatz Kriens (Mattenhof / Bell-Areal).","vi":"Trung tâm thành phố / quảng trường trung tâm tên là gì? — Quảng trường Stadtplatz Kriens.","note":"Địa điểm có thể bị trộn lẫn"},{"id":11,"category":"Kriens","question":"Wie heisst das historische Schloss in Kriens?","answer":"Das historische Schloss in Kriens heisst Schloss Schauensee.","vi":"Tòa lâu đài lịch sử ở Kriens tên là gì? — Lâu đài Schloss Schauensee.","note":""},{"id":12,"category":"Kriens","question":"Was ist das Schloss Schauensee heute?","answer":"Es ist ein Wahrzeichen von Kriens und wird für Anlässe und Feiern genutzt.","vi":"Lâu đài Schauensee ngày nay dùng để làm gì? — Là biểu tượng của Kriens và dùng cho các sự kiện, lễ kỷ niệm.","note":""},{"id":13,"category":"Kriens","question":"Welche bekannten Ortsteile oder Quartiere gehören zu Kriens?","answer":"Zu Kriens gehören unter anderem Obernau, Mattenhof, Feld und Kuonimatt und das neue Quartier Schweighof.","vi":"Các khu vực/khu phố nổi tiếng ở Kriens gồm những gì? — Obernau, Mattenhof, Feld, Kuonimatt và khu đô thị sinh thái thông minh Schweighof","note":""},{"id":14,"category":"Kriens","question":"Wie heisst der Bach, der durch Kriens fliesst?","answer":"Der Bach heisst Krienbach.","vi":"Dòng suối chảy qua Kriens tên là gì? — Krienbach.","note":""},{"id":15,"category":"Kriens","question":"Welches bekannte Sportstadion befindet sich in Kriens (Mattenhof)?","answer":"Das Stadion Kleinfeld (Heimstadion des SC Kriens) und die Pilatus Arena.","vi":"Sân vận động nổi tiếng nào nằm ở Kriens? — Sân Kleinfeld (câu lạc bộ SC Kriens) và Nhà thi đấu Pilatus Arena.","note":"Stadion và Arena khác loại"},{"id":16,"category":"Kriens","question":"Wie heisst der Fussballverein von Kriens?","answer":"Der Fussballverein heisst SC Kriens (Sportclub Kriens).","vi":"Đội bóng đá của Kriens tên là gì? — SC Kriens.","note":""},{"id":17,"category":"Kriens","question":"Wie heisst die Zunft, die in Kriens die Fasnacht organisiert?","answer":"Die Galli-Zunft Kriens.","vi":"Giáo hội/Hội đoàn tổ chức lễ hội Fasnacht ở Kriens tên là gì? — Galli-Zunft Kriens.","note":""},{"id":18,"category":"Kriens","question":"Was ist die \"Krienser Kilbi\"?","answer":"Dieses Fest findet jedes Jahr im Oktober statt. Es ist das grösste traditionelle Volksfest in Kriens","vi":"Hội chợ Kilbi của Kriens là gì? Diễn ra vào tháng 10 hằng năm, đây là lễ hội truyền thống lớn nhất trong năm của người dân địa phương tại Kriens.","note":""},{"id":19,"category":"Kriens","question":"Wie heisst die traditionelle Krienser Fasnachtsfigur mit den Holzmasken?","answer":"Die Krienser Holzmasken (z.B. der «Krienser Deckel» oder «Wöschwiib»).","vi":"Nhân vật mặt nạ gỗ truyền thống trong lễ Fasnacht ở Kriens là gì? — Mặt nạ gỗ Kriens (Krienser Holzmasken) hoặc \"Wöschwiib\" (bà già giặt giũ).","note":""},{"id":20,"category":"Kriens","question":"Wie heisst die Bergbahn, die von Kriens auf den Pilatus führt?","answer":"Die Panorama-Gondelbahn und Luftseilbahn (Pilatus-Bahnen).","vi":"Tuyến cáp treo đi từ Kriens lên đỉnh Pilatus tên là gì? — Pilatus-Bahnen (cáp treo toàn cảnh).","note":""},{"id":21,"category":"Kriens","question":"Wie heisst die Zwischenstation der Pilatusbahn oberhalb von Kriens mit dem Seilpark?","answer":"Die Zwischenstationen heissen Krienseregg und Fräkmüntegg.","vi":"Trạm dừng chân trung gian của cáp treo Pilatus có công viên đu dây tên là gì? — Krienseregg và Fräkmüntegg.","note":"Câu hỏi số ít nhưng đáp án hai trạm"},{"id":22,"category":"Kriens","question":"Wo befindet sich das Stadthaus / die Stadtverwaltung Kriens?","answer":"Das Stadthaus befindet sich am Stadtplatz 1 in Kriens.","vi":"Tòa nhà chính quyền Kriens nằm ở đâu? — Số 1 Stadtplatz, Kriens.","note":""},{"id":23,"category":"Kriens","question":"Welches Schulsystem gilt in Kriens für die Primarschule?","answer":"Es gilt das Volksschulsystem des Kantons Luzern (Kindergarten, Primarschule, Sekundarschule).","vi":"Hệ thống giáo dục tiểu học ở Kriens tuân theo quy định nào? — Hệ thống trường công lập của bang Luzern.","note":""},{"id":24,"category":"Kriens","question":"Welche Schulen gibt es in Kriens?","answer":"Es gibt viele Primarschulen (như Amlehn, Feld, Brunnmatt) und Sekundarschulen (như Roggern, Krauer).","vi":"Ở Kriens có những trường học nào? / Có trường tiểu học Amlehn, Feld, Brunnmatt và trường cấp 2 Roggern, Krauer","note":""},{"id":25,"category":"Kriens","question":"Wer ist in Kriens für die Müllentsorgung und das Recycling zuständig?","answer":"Der Gemeindeverband REAL (Recycling Entsorgung Abwasser Luzern).","vi":"Cơ quan nào chịu trách nhiệm thu gom rác thải và tái chế ở Kriens? — Tổ chức liên xã REAL.","note":""},{"id":26,"category":"Kriens","question":"Welches ist die wichtigste Busverbindung von Kriens nach Luzern?","answer":"Die vbl-Buslinie 1 (Trolleybus) verbindet Kriens direkt mit dem Bahnhof Luzern und Buslinie 5 verbindet Kriens direkt in Richtung Emmen","vi":"Tuyến xe buýt quan trọng nhất từ Kriens đi Luzern là tuyến nào? — Xe buýt tuyến số 1 của vbl hoặc tuyến số 5 tới khu vực Emmen","note":"Kiểm tra tuyến số 5"},{"id":27,"category":"Kriens","question":"Wie heisst der Bahnhof im neu entwickelten Quartier von Kriens?","answer":"Bahnhof Kriens Mattenhof.","vi":"Nhà ga xe lửa nằm ở khu vực mới phát triển của Kriens tên là gì? — Ga Kriens Mattenhof.","note":""},{"id":28,"category":"Kriens","question":"Welches grosse Kultur- und Kongresszentrum grenzt nahe an Kriens (in Luzern)?","answer":"Das KKL Luzern (Kultur- und Kongresszentrum Luzern).","vi":"Trung tâm văn hóa hội nghị lớn nào nằm ngay sát Kriens? — KKL Luzern.","note":""},{"id":29,"category":"Kriens","question":"Welches Einkaufszentrum liegt an Kriens?","answer":"Das Einkaufszentrum Hofmatt in Kriens Zentrum, Pilatusmarkt oder Schappe Center","vi":"Trung tâm thương mại nằm tại Kriens tên là gì? — Trung tâm thương mại Hofmatt, Pilatusmarkt hoặc Schappe Center","note":""},{"id":30,"category":"Kriens","question":"Was bedeutet der Name «Kriens» historisch vermutlich?","answer":"Der Name leitet sich wahrscheinlich vom keltischen Wort «Crenna» (Graben oder Bach) ab.","vi":"Tên \"Kriens\" về mặt lịch sử bắt nguồn từ đâu? — Bắt nguồn từ từ Celts \"Crenna\" (có nghĩa là mương rãnh hoặc dòng suối).","note":"Nguồn gốc tên chưa xác minh"},{"id":31,"category":"Kriens","question":"Welche früher sehr bekannte Fleischverarbeitungsfirma hatte ihren Sitz in Kriens?","answer":"Die Firma Bell (Bell AG).","vi":"Tập đoàn chế biến thịt nổi tiếng nào từng có trụ sở lớn ở Kriens? — Tập đoàn Bell.","note":""},{"id":32,"category":"Kriens","question":"Wie ist die Legislative (das Parlament) der Stadt Kriens organisiert?","answer":"Die Legislative ist der Einwohnerrat (mit 30 Mitgliedern).","vi":"Cơ quan lập pháp (hội đồng) của Kriens được tổ chức như thế nào? — Hội đồng Einwohnerrat (gồm 30 thành viên).","note":""},{"id":33,"category":"Kriens","question":"Wie heisst die Exekutive (die Regierung) der Stadt Kriens?","answer":"Die Exekutive ist der Stadtrat (mit 5 Mitgliedern).","vi":"Cơ quan hành pháp (chính phủ) của Kriens tên là gì? — Hội đồng thành phố Stadtrat (gồm 5 thành viên).","note":""},{"id":34,"category":"Kriens","question":"Wie oft wird der Stadtrat und der Einwohnerrat in Kriens gewählt?","answer":"Alle 4 Jahre durch das Stimmvolk.","vi":"Bao lâu thì bầu cử Stadtrat và Einwohnerrat ở Kriens một lần? — 4 năm một lần bởi cử tri.","note":""},{"id":35,"category":"Kriens","question":"Können Sie die Namen der anderen Stadträte in Kriens nennen?","answer":"Neben Christine Kaufmann-Wolf gibt es Maurus Frey, Marco Frauenknecht, Claudius Pappa und Roger Erni.","vi":"Bạn có thể kể tên các thành viên khác trong Hội đồng Thành phố Kriens không? Bên cạnh bà Christine Kaufmann-Wolf thì có các ông Maurus Frey, Marco Frauenknecht, Claudius Pappa và Roger Erni.","note":"Kiểm tra thành viên đương nhiệm"},{"id":36,"category":"Kriens","question":"Wer sind die Nachbargemeinden von Kriens?","answer":"Die Nachbarn sind die Stadt Luzern, Horw, Hergiswil, Alpnach, Schwarzenberg und Malters.","vi":"Các khu vực lân cận giáp ranh với Kriens là gì? Kriens giáp ranh trực tiếp với thành phố Luzern, Horw, Hergiswil, Alpnach, Schwarzenberg und Malters","note":""},{"id":37,"category":"Kriens","question":"Wo kann man in Kriens im Sommer schwimmen gehen?","answer":"Im Parkbad Kleinfeld (Freibad Kriens).","vi":"Ở Kriens mùa hè có thể đi bơi ngoài trời ở đâu? — Bể bơi ngoài trời Parkbad Kleinfeld.","note":""},{"id":38,"category":"Kriens","question":"Wie heisst das spitalähnliche Pflegeheim / Seniorenzentrum in Kriens?","answer":"Das ZIAG (Zentrum für Pflege und Betreuung) / Schweighof und Grossfeld.","vi":"Trung tâm chăm sóc người cao tuổi ở Kriens tên là gì? — Trung tâm Schweighof và Grossfeld.","note":"Tên cơ sở cần xác minh"},{"id":39,"category":"Kriens","question":"Wie heisst die evangelisch-reformierte Kirche in Kriens?","answer":"Die Johanneskirche.","vi":"Nhà thờ Tin Lành Cải cách ở Kriens tên là gì? — Nhà thờ Johanneskirche.","note":""},{"id":40,"category":"Kriens","question":"Wie heisst die katholische Hauptkirche im Zentrum von Kriens?","answer":"Die Galluskirche (St. Gallus).","vi":"Nhà thờ Công giáo chính ở trung tâm Kriens tên là gì? — Nhà thờ St. Gallus.","note":""},{"id":41,"category":"Kriens","question":"Welches Naherholungsgebiet liegt direkt vor den Toren von Kriens?","answer":"Der Sonnenberg und der Pilatus.","vi":"Khu vực nghỉ dưỡng/đi dạo thiên nhiên ngay sát Kriens là đâu? — Đồi Sonnenberg và núi Pilatus.","note":""},{"id":42,"category":"Kriens","question":"Wie heißt die historische Standseilbahn, die auf den Sonnenberg führt?","answer":"Die Sonnenbergbahn.","vi":"Tuyến xe điện kéo lịch sử lên đồi Sonnenberg tên là gì? — Sonnenbergbahn.","note":""},{"id":43,"category":"Kriens","question":"Wie viele Referenzen müssen Sie für ein Einbürgerungsgesuch in Kriens angeben?","answer":"Mindestens 3 Referenzen, davon müssen mindestens 2 in Kriens wohnhaft sein.","vi":"Trong hồ sơ xin nhập quốc tịch tại Kriens cần ghi bao nhiêu người tham chiếu? — Ít nhất 3 người, trong đó ít nhất 2 người phải sống tại Kriens.","note":"Quy định hành chính cần xác minh"},{"id":44,"category":"Kriens","question":"Ab welchem Alter müssen Jugendliche das Einbürgerungsgesuch eigenhändig ausfüllen?","answer":"Ab 14 Jahren.","vi":"Từ bao nhiêu tuổi thì thanh thiếu niên phải tự tay điền hồ sơ xin nhập quốc tịch? — Từ 14 tuổi.","note":"Quy định hành chính cần xác minh"},{"id":45,"category":"Kriens","question":"Wo gibt es die besten Spiel- und Freizeitorte für Kinder in Kriens?","answer":"Krienseregg (Pilatus) / Das Pilu-Land, Spielplatz in Bellpark, Hallenbad Krauer, Parkbad Kleinfeld Kriens","vi":"Những địa điểm vui chơi tuyệt vời nhất dành cho trẻ em ở Kriens ở đâu? Krienseregg (Trạm dừng chân trên núi Pilatus) / Pilu Land, khu vui chơi trong công viên Bellpark, bể bơi trong nhà Krauer, hồ bơi ngoài trời Kleinfeld Kriens","note":""}];
-const $=id=>document.getElementById(id);
-function api(action,params={}){return new Promise((resolve,reject)=>{
- if(!API_URL.startsWith('https://')){reject(Error('Chưa cấu hình API_URL trong index.html'));return}
- const cb='kriensCallback'+Date.now()+Math.floor(Math.random()*10000);
- const script=document.createElement('script');const timeout=setTimeout(()=>finish(Error('Kết nối API quá thời gian.')),15000);
- function finish(err,value){clearTimeout(timeout);delete window[cb];script.remove();err?reject(err):resolve(value)}
- window[cb]=data=>data.ok?finish(null,data.data):finish(Error(data.error||'API error'));
- script.onerror=()=>finish(Error('Không tải được dữ liệu từ Apps Script'));
- const u=new URL(API_URL);u.searchParams.set('action',action);u.searchParams.set('callback',cb);
- for(const [k,v] of Object.entries(params))u.searchParams.set(k,v);
- script.src=u.toString();document.head.appendChild(script);
-})}
-function saveRemote(profile,id,status){
- if(!API_URL.startsWith('https://'))return;
- // HTML form avoids cross-origin fetch preflight. No confirmation from server is possible.
- const frame=document.createElement('iframe');frame.name='kriensSave'+Date.now();frame.hidden=true;document.body.appendChild(frame);
- const form=document.createElement('form');form.method='POST';form.action=API_URL;form.target=frame.name;form.hidden=true;
- for(const [k,v] of Object.entries({action:'save',profile,id,status})){
-  const input=document.createElement('input');input.name=k;input.value=v;form.appendChild(input)
- }
- document.body.appendChild(form);form.submit();setTimeout(()=>{form.remove();frame.remove()},12000);
-}
-function cacheKey(){return 'kriens-v3-'+profile}
-function localProgress(){try{return JSON.parse(localStorage.getItem(cacheKey())||'{}')}catch(e){return {}}}
-function applyProgress(data){const map=localProgress();(data||[]).forEach(x=>map[x.id]=x.status);all.forEach(q=>q.status=map[q.id]||'Chưa học');applyFilter()}
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<base target="_top">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+  :root{--bg:#f5f6fa;--card:#fff;--ink:#1d2433;--mute:#6b7385;--pri:#c8281d;--pri-soft:#fdeceb;
+        --ok:#1f9d55;--ok-soft:#e5f6ec;--bad:#d64545;--bad-soft:#fdecec;--line:#e2e5ec}
+  *{box-sizing:border-box}
+  body{margin:0;font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;background:var(--bg);color:var(--ink)}
+  header{background:var(--pri);color:#fff;padding:12px 16px;display:flex;align-items:center;justify-content:space-between;gap:10px}
+  header h1{margin:0;font-size:18px}
+  header small{opacity:.85}
+  #who{background:rgba(255,255,255,.18);color:#fff;border:1px solid rgba(255,255,255,.4);border-radius:99px;padding:7px 12px;font-size:15px;cursor:pointer;white-space:nowrap}
+  nav{display:flex;gap:4px;padding:8px;background:#fff;border-bottom:1px solid var(--line);position:sticky;top:0;z-index:5}
+  nav button{flex:1;border:1px solid var(--line);background:#fff;padding:9px 2px;border-radius:10px;font-size:14px;cursor:pointer;color:var(--ink);line-height:1.2}
+  nav button.on{background:var(--pri);color:#fff;border-color:var(--pri)}
+  .toolbar{display:flex;gap:10px;flex-wrap:wrap;align-items:center;padding:8px 12px;background:#fff;border-bottom:1px solid var(--line);font-size:14px;color:var(--mute)}
+  .toolbar select,.toolbar input{font-size:14px;padding:4px 6px;border:1px solid var(--line);border-radius:8px;background:#fff}
+  main{max-width:760px;margin:0 auto;padding:16px}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:18px;margin-bottom:14px}
+  .row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+  .between{justify-content:space-between}
+  .mt{margin-top:14px}
+  .btn{border:none;background:var(--pri);color:#fff;padding:10px 14px;border-radius:10px;font-size:15px;cursor:pointer}
+  .btn.ghost{background:#fff;color:var(--ink);border:1px solid var(--line)}
+  .btn.big{width:100%;padding:16px;font-size:18px}
+  .btn:disabled{opacity:.45;cursor:default}
+  .btn.rec,.btn.recording{background:var(--bad);color:#fff;animation:pulse 1s infinite}
+  @keyframes pulse{50%{opacity:.7}}
+  .lbl{font-size:12px;text-transform:uppercase;letter-spacing:.06em;color:var(--mute);margin-top:12px}
+  .de{font-size:21px;line-height:1.45;font-weight:600;margin-top:4px}
+  .ans{font-size:18px;line-height:1.5;margin-top:4px}
+  .vi{color:var(--mute);margin-top:10px;font-style:italic;line-height:1.45}
+  .blur{filter:blur(7px);user-select:none;cursor:pointer}
+  .hidden{display:none!important}
+  .mute{color:var(--mute)}
+  .opts{display:grid;gap:8px;margin-top:12px}
+  .opt{text-align:left;border:1px solid var(--line);background:#fff;padding:12px 14px;border-radius:10px;font-size:16px;cursor:pointer;line-height:1.4;color:var(--ink)}
+  .opt.ok{background:var(--ok-soft);border-color:var(--ok)}
+  .opt.bad{background:var(--bad-soft);border-color:var(--bad)}
+  .w-ok{color:var(--ok);font-weight:600}
+  .w-miss{color:var(--bad);text-decoration:underline dotted}
+  .score{font-size:30px;font-weight:700}
+  .heard{min-height:28px;font-size:18px;margin-top:10px}
+  textarea{width:100%;min-height:70px;font-size:16px;padding:10px;border:1px solid var(--line);border-radius:10px;margin-top:10px;font-family:inherit}
+  .item{border-bottom:1px solid var(--line);padding:12px 0}
+  .item:last-child{border-bottom:none}
+  .badge{display:inline-block;font-size:12px;padding:2px 8px;border-radius:99px;background:var(--pri-soft);color:var(--pri);margin-left:6px}
+  .badge.ok{background:var(--ok-soft);color:var(--ok)}
+  .search{width:100%;padding:10px;font-size:16px;border:1px solid var(--line);border-radius:10px}
+  .notice{background:#fff8e1;border:1px solid #f3dc8f;padding:10px 12px;border-radius:10px;font-size:14px;margin-top:10px}
+  .recbox{border-top:1px dashed var(--line);padding-top:14px}
+  .voices{display:grid;gap:6px;margin-top:8px}
+  .voice{display:flex;align-items:center;justify-content:space-between;border:1px solid var(--line);border-radius:10px;padding:8px 10px}
+  #loading{text-align:center;padding:40px;color:var(--mute)}
+  /* chọn người */
+  #picker{position:fixed;inset:0;background:rgba(20,24,35,.55);display:flex;align-items:center;justify-content:center;z-index:20;padding:16px}
+  #picker .card{width:100%;max-width:440px;margin:0}
+  .people{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:14px}
+  .person{border:1px solid var(--line);background:#fff;border-radius:14px;padding:16px 8px;font-size:17px;cursor:pointer;color:var(--ink)}
+  .person .ic{font-size:36px;display:block;margin-bottom:6px}
+  .person.on{border-color:var(--pri);background:var(--pri-soft)}
+  /* cả nhà */
+  .fam{display:grid;gap:10px}
+  .famrow{border:1px solid var(--line);border-radius:12px;padding:12px 14px}
+  .famrow.me{border-color:var(--pri)}
+  .bar{height:10px;background:#eef0f5;border-radius:99px;overflow:hidden;margin-top:8px}
+  .bar i{display:block;height:100%;background:var(--ok)}
+  .stats{display:flex;gap:14px;flex-wrap:wrap;font-size:14px;color:var(--mute);margin-top:6px}
+  .stats b{color:var(--ink)}
+  .markbar{display:flex;gap:6px;flex-wrap:wrap;align-items:center;padding:8px 12px;background:#fff;border-bottom:1px solid var(--line);font-size:14px}
+  .mk{border:1px solid var(--line);background:#fff;color:var(--ink);padding:7px 11px;border-radius:99px;font-size:14px;cursor:pointer}
+  .mk.on[data-mark="3"]{background:var(--ok);border-color:var(--ok);color:#fff}
+  .mk.on[data-mark="1"]{background:#e8a317;border-color:#e8a317;color:#fff}
+  .mk.on[data-mark="2"]{background:#3f6fd8;border-color:#3f6fd8;color:#fff}
+  .st{display:inline-block;font-size:12px;padding:2px 8px;border-radius:99px;margin-left:6px;vertical-align:middle;font-weight:500}
+  .st-known{background:var(--ok-soft);color:var(--ok)}
+  .st-review{background:#fff3d6;color:#a86d00}
+  .st-learning{background:#e7eefc;color:#2f5bc0}
+  .st-new{background:#eef0f5;color:var(--mute)}
+  #toast{position:fixed;left:50%;bottom:18px;transform:translateX(-50%);background:#1d2433;color:#fff;padding:10px 14px;border-radius:10px;font-size:14px;z-index:30;max-width:90%}
+</style>
+</head>
+<body>
+<header>
+  <div>
+    <h1 id="title">Kriens – 45 Fragen</h1>
+    <small id="sub">Luyện Nghe · Nói · Hiểu</small>
+  </div>
+  <button id="who" class="hidden">👤 Chọn người</button>
+</header>
 
-function current(){return items[pos]||null}
-function applyFilter(){let f=document.getElementById('filter').value;items=all.filter(x=>f==='all'||x.status===f);pos=0;render()}
-function render(){stopAll();stopRecording();$('playback').hidden=true;let q=current();document.getElementById('counter').textContent=q?`${pos+1} / ${items.length} · ${q.category} · ${q.status}`:'Không có câu hỏi trong bộ lọc';for(let k of ['question','answer','vi'])document.getElementById(k).textContent=q?(k==='question'?q.question:k==='answer'?q.answer:q.vi):'';document.getElementById('answer').hidden=true;document.getElementById('vi').hidden=true;document.getElementById('note').textContent=q&&q.note?'⚠ '+q.note:'';document.getElementById('heard').textContent='Ghi âm câu trả lời, sau đó bấm Nghe lại. Nhận dạng tự động chỉ hoạt động trên một số trình duyệt.';document.getElementById('score').textContent=''}
-function toggle(id){document.getElementById(id).hidden=!document.getElementById(id).hidden}
-function speak(which){let q=current();if(!q)return;if(!('speechSynthesis'in window)){alert('Thiết bị không hỗ trợ giọng đọc.');return}speechSynthesis.cancel();let u=new SpeechSynthesisUtterance(q[which]);u.lang='de-CH';u.rate=Number(document.getElementById('speed').value);let voices=speechSynthesis.getVoices();u.voice=voices.find(v=>v.lang==='de-CH')||voices.find(v=>v.lang.startsWith('de'))||null;speechSynthesis.speak(u)}
-function stopAll(){if('speechSynthesis'in window)speechSynthesis.cancel();if(recognition){try{recognition.abort()}catch(e){}recognition=null}}
-function normalize(s){return s.toLocaleLowerCase('de').replace(/[^\p{L}\p{N}\s]/gu,' ').replace(/\s+/g,' ').trim()}
-function compare(a,b){let x=normalize(a).split(' ').filter(Boolean),y=normalize(b).split(' ').filter(Boolean);if(!y.length)return 0;let dp=Array.from({length:x.length+1},()=>Array(y.length+1).fill(0));for(let i=1;i<=x.length;i++)for(let j=1;j<=y.length;j++)dp[i][j]=x[i-1]===y[j-1]?dp[i-1][j-1]+1:Math.max(dp[i-1][j],dp[i][j-1]);return Math.round(100*dp[x.length][y.length]/y.length)}
-async function recordAnswer(){
- const q=current();if(!q)return;stopRecording();if(!navigator.mediaDevices?.getUserMedia||!window.MediaRecorder){document.getElementById('heard').textContent='Trình duyệt không hỗ trợ ghi âm tại đây. Hãy thử Safari/Chrome trực tiếp hoặc dùng ứng dụng Ghi âm.';return;}
- try{mediaStream=await navigator.mediaDevices.getUserMedia({audio:true});audioChunks=[];if(recordingUrl){URL.revokeObjectURL(recordingUrl);recordingUrl=null;}recordedQuestionId=q.id;mediaRecorder=new MediaRecorder(mediaStream);mediaRecorder.ondataavailable=e=>{if(e.data.size)audioChunks.push(e.data)};mediaRecorder.onstop=()=>{if(audioChunks.length){recordingUrl=URL.createObjectURL(new Blob(audioChunks,{type:mediaRecorder.mimeType||'audio/webm'}));$('playback').src=recordingUrl;$('playback').hidden=false;document.getElementById('heard').textContent='Đã ghi âm. Nhấn ▶️ Nghe lại để tự so sánh với đáp án.';}mediaStream?.getTracks().forEach(t=>t.stop());mediaStream=null;};mediaRecorder.start();document.getElementById('heard').textContent='🔴 Đang ghi âm... Bấm Dừng ghi khi trả lời xong.';}catch(e){document.getElementById('heard').textContent='Không thể ghi âm: '+e.name+'. Kiểm tra quyền microphone của Safari và mở trang qua HTTPS.';mediaStream?.getTracks().forEach(t=>t.stop());mediaStream=null;}
+<nav>
+  <button data-mode="listen" class="on">🎧<br>Nghe</button>
+  <button data-mode="speak">🎤<br>Nói</button>
+  <button data-mode="quiz">🧠<br>Hiểu</button>
+  <button data-mode="list">📋<br>Câu</button>
+  <button data-mode="family">👪<br>Cả nhà</button>
+</nav>
+
+<div class="toolbar">
+  <label>Tốc độ
+    <select id="rate">
+      <option value="0.6">0.6×</option><option value="0.8">0.8×</option>
+      <option value="1" selected>1×</option><option value="1.2">1.2×</option>
+    </select>
+  </label>
+  <select id="filter">
+    <option value="all">Tất cả câu</option>
+    <option value="notknown">Chưa thuộc</option>
+    <option value="review">↻ Ôn lại</option>
+    <option value="learning">Đang học</option>
+    <option value="new">Chưa học</option>
+    <option value="known">✓ Đã thuộc</option>
+  </select>
+  <label><input type="checkbox" id="shuffle"> Xáo trộn</label>
+  <label>Câu số <input type="number" id="jump" min="1" style="width:64px"></label>
+</div>
+
+<div class="markbar hidden" id="markbar">
+  <span class="mute">Câu này:</span>
+  <button class="mk" data-mark="3">✓ Đã thuộc</button>
+  <button class="mk" data-mark="1">↻ Ôn lại</button>
+  <button class="mk" data-mark="2">Đang học</button>
+</div>
+
+<main>
+  <div id="loading">Đang tải câu hỏi…</div>
+
+  <!-- KẾT NỐI (chỉ dùng khi chạy trên GitHub Pages) -->
+  <section id="v-setup" class="hidden">
+    <div class="card">
+      <b style="font-size:18px">🔗 Kết nối với Google Sheet</b>
+      <div id="setup-err" class="notice hidden"></div>
+      <ol style="line-height:1.6;padding-left:20px;margin-bottom:0">
+        <li>Trong Apps Script: <b>Triển khai › Quản lý các bản triển khai</b>.</li>
+        <li>Bản triển khai phải là <b>Ứng dụng web</b>, <i>Thực thi với tư cách: <b>Tôi</b></i>, <i>Người có quyền truy cập: <b>Bất kỳ ai</b></i> (không chọn “Bất kỳ ai có Tài khoản Google”).</li>
+        <li>Sao chép <b>URL ứng dụng web</b> – kết thúc bằng <code>/exec</code> (không phải <code>/dev</code>) – và dán vào đây:</li>
+      </ol>
+      <input id="api-url" class="search mt" placeholder="https://script.google.com/macros/s/…/exec" autocomplete="off">
+      <div class="row mt">
+        <button class="btn" id="api-save">Kết nối</button>
+        <a id="api-test" class="btn ghost hidden" target="_blank" rel="noopener" style="text-decoration:none">Kiểm tra link</a>
+      </div>
+      <p class="mute" style="font-size:13px">“Kiểm tra link” mở trang JSON: thấy <code>"ok":true</code> là Apps Script đã sẵn sàng. Máy này sẽ nhớ link sau khi kết nối thành công.</p>
+    </div>
+  </section>
+
+  <!-- NGHE -->
+  <section id="v-listen" class="hidden">
+    <div class="card">
+      <div class="row between">
+        <b id="l-count"></b>
+        <label class="mute"><input type="checkbox" id="l-hide" checked> Ẩn chữ</label>
+      </div>
+      <div class="lbl">Frage</div>
+      <div id="l-q" class="de"></div>
+      <div id="l-a-wrap"><div class="lbl">Antwort</div><div id="l-a" class="ans"></div></div>
+      <div id="l-vi" class="vi"></div>
+      <div class="row mt">
+        <button class="btn" id="l-pq">▶ Câu hỏi</button>
+        <button class="btn" id="l-pa">▶ Trả lời</button>
+        <button class="btn ghost" id="l-show">👁 Hiện chữ</button>
+      </div>
+      <div class="row mt between">
+        <button class="btn ghost" id="l-prev">◀ Trước</button>
+        <button class="btn ghost" id="l-auto">⏯ Phát liên tục</button>
+        <button class="btn ghost" id="l-next">Sau ▶</button>
+      </div>
+    </div>
+    <p class="mute" style="font-size:14px">Mẹo: nghe câu hỏi với chữ bị ẩn, tự trả lời trong đầu, rồi bấm “Hiện chữ” để kiểm tra.</p>
+  </section>
+
+  <!-- NÓI -->
+  <section id="v-speak" class="hidden">
+    <div class="card">
+      <div class="row between">
+        <b id="s-count"></b>
+        <div class="row mute" style="font-size:14px">
+          <label><input type="radio" name="s-mode" value="answer" checked> Trả lời</label>
+          <label><input type="radio" name="s-mode" value="repeat"> Nhắc lại</label>
+        </div>
+      </div>
+      <div class="lbl">Frage</div>
+      <div class="row" style="align-items:flex-start">
+        <div id="s-q" class="de" style="flex:1"></div>
+        <button class="btn ghost" id="s-pq">▶</button>
+      </div>
+      <div class="lbl" id="s-target-lbl">Câu mẫu</div>
+      <div class="row" style="align-items:flex-start">
+        <div id="s-target" class="ans blur" style="flex:1"></div>
+        <button class="btn ghost" id="s-pt">▶</button>
+      </div>
+      <div class="mt"><button class="btn big" id="s-mic">🎤 Bấm để nói (chấm điểm)</button></div>
+      <div id="s-heard" class="heard mute"></div>
+      <div id="s-type-wrap" class="hidden">
+        <div class="notice" id="s-type-msg"></div>
+        <textarea id="s-type" placeholder="Gõ câu trả lời bằng tiếng Đức…"></textarea>
+        <button class="btn mt" id="s-check">Kiểm tra</button>
+      </div>
+      <div id="s-result" class="mt"></div>
+
+      <div class="recbox mt">
+        <div class="lbl" style="margin-top:0" id="r-title">🎙 Ghi âm giọng của bạn &amp; nghe lại</div>
+        <div class="row mt">
+          <button class="btn" id="r-rec">⏺ Ghi âm</button>
+          <button class="btn ghost" id="r-play" disabled>▶ Nghe lại</button>
+          <button class="btn ghost" id="r-cmp" disabled>🔁 Mẫu rồi giọng mình</button>
+          <button class="btn ghost" id="r-save" disabled>💾 Lưu</button>
+        </div>
+        <div id="r-file-wrap" class="notice hidden">
+          Trang này không mở được micro. Hãy ghi bằng ứng dụng ghi âm của điện thoại:
+          <input type="file" accept="audio/*" capture id="r-file" style="margin-top:8px;width:100%">
+        </div>
+        <div id="r-status" class="mute" style="font-size:14px;margin-top:8px"></div>
+        <div id="r-voices-wrap" class="hidden" style="margin-top:12px">
+          <div class="mute" style="font-size:13px">Giọng cả nhà đã lưu cho câu này:</div>
+          <div class="voices" id="r-voices"></div>
+        </div>
+      </div>
+
+      <div class="row mt between">
+        <button class="btn ghost" id="s-prev">◀ Trước</button>
+        <button class="btn ghost" id="s-next">Sau ▶</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- HIỂU -->
+  <section id="v-quiz" class="hidden">
+    <div class="card">
+      <div class="row between"><b id="q-count"></b><span id="q-score" class="mute"></span></div>
+      <p class="mute" id="q-instr"></p>
+      <button class="btn" id="q-play">▶ Nghe câu hỏi</button>
+      <div id="q-opts" class="opts"></div>
+      <div id="q-reveal" class="hidden">
+        <div class="lbl">Frage</div><div id="q-q" class="de"></div>
+        <div id="q-a-wrap"><div class="lbl">Antwort</div><div id="q-a" class="ans"></div></div>
+        <div id="q-vi" class="vi"></div>
+      </div>
+      <div class="row mt between">
+        <button class="btn ghost" id="q-prev">◀ Trước</button>
+        <button class="btn ghost" id="q-next">Câu tiếp ▶</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- DANH SÁCH -->
+  <section id="v-list" class="hidden">
+    <input class="search" id="search" placeholder="Tìm câu hỏi…">
+    <div class="card mt" id="list"></div>
+  </section>
+
+  <!-- CẢ NHÀ -->
+  <section id="v-family" class="hidden">
+    <div class="card">
+      <div class="row between"><b>👪 Tiến độ cả nhà</b><button class="btn ghost" id="f-refresh">🔄 Làm mới</button></div>
+      <p class="mute" style="font-size:14px;margin:6px 0 12px">“Thuộc” = câu tự đánh dấu “Đã thuộc”, hoặc (nếu chưa đánh dấu) nói đạt từ 85% / trả lời trắc nghiệm đúng.</p>
+      <div class="fam" id="fam"></div>
+    </div>
+    <div class="card">
+      <b>🔥 Câu cả nhà còn yếu</b>
+      <p class="mute" style="font-size:14px;margin:6px 0 0">Những câu đã luyện nhưng điểm trung bình thấp nhất – nên ôn cùng nhau.</p>
+      <div id="weak"></div>
+    </div>
+  </section>
+</main>
+
+<!-- CHỌN NGƯỜI -->
+<div id="picker" class="hidden">
+  <div class="card">
+    <b style="font-size:19px">Ai đang học? 👋</b>
+    <div class="people" id="people"></div>
+    <div class="row mt">
+      <input id="new-name" class="search" style="flex:1" placeholder="Thêm người mới…" maxlength="40">
+      <button class="btn ghost" id="add-person">＋</button>
+    </div>
+    <p class="mute" style="font-size:13px;margin-bottom:0">Tên được quản lý trong sheet “Thành viên”. Máy này sẽ nhớ người bạn chọn.</p>
+    <button class="btn ghost mt hidden" id="change-api" style="font-size:13px;padding:6px 10px">⚙ Đổi kết nối Google Sheet</button>
+  </div>
+</div>
+
+<div id="toast" class="hidden"></div>
+
+<script>
+/* ---------------- Trạng thái ---------------- */
+const S = { items: [], order: [], pos: 0, rate: 1, mode: 'listen', cache: {}, voice: null,
+            player: null, token: 0, member: null, members: [], progress: {},
+            quiz: { field: 'antwort', answered: false, ok: 0, total: 0 } };
+const $ = s => document.querySelector(s);
+const store = {
+  get(k, d) { try { const v = localStorage.getItem(k); return v == null ? d : JSON.parse(v); } catch (e) { return d; } },
+  set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) {} }
+};
+/* ---------------- Kết nối máy chủ ----------------
+ * Trong Apps Script: gọi trực tiếp google.script.run.
+ * Trên GitHub Pages (hoặc web khác): gọi API của Apps Script qua fetch.
+ * Có thể dán link /exec cố định vào DEFAULT_API_URL để cả nhà khỏi phải nhập.
+ */
+const DEFAULT_API_URL = 'https://script.google.com/macros/s/AKfycbzSZ02Kpb7Fo_6y9aNIbtrq27O_OA0T8KlBT-CSD7nDxbAO8NkySs3-PlUc3BbEzWk/exec';
+const IN_GAS = typeof google !== 'undefined' && google.script && google.script.run;
+let API_URL = new URLSearchParams(location.search).get('api') || store.get('kriens_api', '') || DEFAULT_API_URL;
+
+function run(fn, ...args) {
+  if (IN_GAS) return new Promise((res, rej) => google.script.run.withSuccessHandler(res).withFailureHandler(rej)[fn](...args));
+  if (!API_URL) return Promise.reject(new Error('Chưa có link Apps Script.'));
+  return fetch(API_URL, {
+    method: 'POST',
+    // text/plain = "simple request" → không bị chặn CORS bởi Apps Script
+    headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+    body: JSON.stringify({ fn, args }),
+    redirect: 'follow'
+  }).then(r => r.text()).then(t => {
+    let j;
+    try { j = JSON.parse(t); }
+    catch (e) {
+      throw new Error(/<html|<!doctype/i.test(t)
+        ? 'Apps Script trả về trang đăng nhập/HTML thay vì dữ liệu. Kiểm tra: quyền truy cập “Bất kỳ ai”, link /exec, và đã triển khai phiên bản mới có hàm doPost.'
+        : 'Phản hồi không hợp lệ từ Apps Script.');
+    }
+    if (!j.ok) throw new Error(j.error || 'Lỗi không rõ từ Apps Script.');
+    return j.result;
+  }, e => { throw new Error('Không gọi được Apps Script (mất mạng hoặc link sai): ' + e.message); });
 }
-function stopRecording(){if(mediaRecorder&&mediaRecorder.state==='recording')mediaRecorder.stop();else if(mediaStream){mediaStream.getTracks().forEach(t=>t.stop());mediaStream=null;}}
-function playRecording(){if(!recordingUrl||recordedQuestionId!==current()?.id){document.getElementById('heard').textContent='Chưa có bản ghi cho câu hỏi này.';return;}new Audio(recordingUrl).play().catch(e=>document.getElementById('heard').textContent='Không phát được: '+e.message);}
-function switchProfile(){profile=$('profile').value;applyProgress([]);api('progress',{profile}).then(applyProgress).catch(e=>{$('heard').textContent='Đang dùng tiến độ lưu trên thiết bị: '+e.message})}
-function listen(){let q=current();if(!q)return;let SR=window.SpeechRecognition||window.webkitSpeechRecognition;if(!SR){document.getElementById('heard').textContent='Trình duyệt không hỗ trợ nhận dạng giọng nói. Hãy thử Chrome.';return}stopAll();recognition=new SR();recognition.lang='de-DE';recognition.interimResults=false;recognition.maxAlternatives=1;document.getElementById('heard').textContent='🎙️ Đang nghe...';recognition.onresult=e=>{let s=e.results[0][0].transcript;document.getElementById('heard').textContent=s;document.getElementById('score').textContent='Mức trùng từ với đáp án: '+compare(s,q.answer)+'% (không phải điểm phát âm)'};recognition.onerror=e=>{document.getElementById('heard').textContent=e.error==='not-allowed'?'Nhận dạng bị trình duyệt từ chối (not-allowed). Hãy dùng Ghi âm / Nghe lại; không phải lỗi quyền chia sẻ Sheet.':'Lỗi nhận dạng: '+e.error};recognition.start()}
-function move(n){if(!items.length)return;pos=(pos+n+items.length)%items.length;render()}
-function shuffle(){items.sort(()=>Math.random()-.5);pos=0;render()}
-function mark(status){let q=current();if(!q)return;q.status=status;const map=localProgress();map[q.id]=status;localStorage.setItem(cacheKey(),JSON.stringify(map));saveRemote(profile,q.id,status);let f=$('filter').value;if(f!=='all'&&f!==status)applyFilter();else render();$('heard').textContent='Đã lưu trên thiết bị. Nếu kết nối backend hoạt động, trạng thái cũng được gửi tới Google Sheets (chưa xác nhận máy chủ).'}
-// Show bundled questions immediately. Remote refresh is optional and may be blocked by Safari.
-all=BACKUP_QUESTIONS.map(q=>({...q}));
-switchProfile();
-api('questions').then(data=>{
- if(Array.isArray(data)&&data.length){all=data;switchProfile();$('syncStatus').textContent='Đã tải câu hỏi từ Google Sheets ('+data.length+' câu).';}
-}).catch(e=>{$('syncStatus').textContent='Đang dùng 45 câu hỏi dự phòng. Google Sheets chưa kết nối: '+e.message;});
-</script></body></html>
+const cur = () => S.items[S.order[S.pos]];
+const esc = s => String(s == null ? '' : s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+let toastTimer;
+function toast(msg) {
+  $('#toast').textContent = msg; $('#toast').classList.remove('hidden');
+  clearTimeout(toastTimer); toastTimer = setTimeout(() => $('#toast').classList.add('hidden'), 3500);
+}
+const memberIcon = name => (S.members.find(m => m.name === name) || {}).icon || '🙂';
+
+/* ---------------- Người học & tiến độ ---------------- */
+function myProg(id, member) {
+  const m = S.progress[member || S.member] || {};
+  return m[id] || { speak: null, speakTries: 0, qOk: 0, qTry: 0, mark: 0, last: 0 };
+}
+const STATUS = {
+  known:    { label: '✓ Đã thuộc', cls: 'st-known' },
+  review:   { label: '↻ Ôn lại',   cls: 'st-review' },
+  learning: { label: 'Đang học',   cls: 'st-learning' },
+  new:      { label: 'Chưa học',   cls: 'st-new' }
+};
+const MARK_TO_STATUS = { 3: 'known', 2: 'learning', 1: 'review' };
+/** Trạng thái: đánh dấu tay được ưu tiên; nếu chưa đánh dấu thì tự suy ra từ kết quả luyện. */
+function status(it, member) {
+  const p = myProg(it.id, member);
+  if (p.mark && MARK_TO_STATUS[p.mark]) return MARK_TO_STATUS[p.mark];
+  if ((p.speak || 0) >= 85 || p.qOk > 0) return 'known';
+  if (p.speakTries || p.qTry) return 'learning';
+  return 'new';
+}
+const stBadge = it => { const s = STATUS[status(it)]; return `<span class="st ${s.cls}">${s.label}</span>`; };
+function setMark(v) {
+  const it = cur();
+  if (!it || !S.member) return toast('Hãy chọn người học trước.');
+  const now = myProg(it.id).mark || 0;
+  const val = now === v ? 0 : v;                        // bấm lại nút đang chọn = bỏ đánh dấu
+  record(it, 'mark', val);
+  updateMarkbar();
+  render();
+  if (val === 3) toast('✓ Đã lưu: câu ' + it.nr + ' đã thuộc');
+}
+function updateMarkbar() {
+  const show = ['listen', 'speak', 'quiz'].includes(S.mode) && S.items.length;
+  $('#markbar').classList.toggle('hidden', !show);
+  if (!show) return;
+  const mark = myProg(cur().id).mark || 0;
+  document.querySelectorAll('.mk').forEach(b => b.classList.toggle('on', Number(b.dataset.mark) === mark));
+}
+function record(it, type, value) {
+  if (!S.member) return;
+  const m = S.progress[S.member] || (S.progress[S.member] = {});
+  const p = m[it.id] || (m[it.id] = { speak: null, speakTries: 0, qOk: 0, qTry: 0, mark: 0, last: 0 });
+  if (type === 'mark') p.mark = value;
+  else if (type === 'speak') { p.speak = Math.max(p.speak || 0, value); p.speakTries++; p.last = Date.now(); }
+  else { p.qTry++; if (value) p.qOk++; p.last = Date.now(); }
+  run('logProgress', S.member, it.id, it.nr, type, value).catch(() => toast('⚠️ Chưa lưu được tiến độ (mất mạng?)'));
+}
+function openPicker() {
+  const box = $('#people');
+  box.innerHTML = '';
+  S.members.forEach(m => {
+    const b = document.createElement('button');
+    b.className = 'person' + (m.name === S.member ? ' on' : '');
+    b.innerHTML = `<span class="ic">${esc(m.icon)}</span>${esc(m.name)}`;
+    b.onclick = () => choosePerson(m.name);
+    box.appendChild(b);
+  });
+  $('#picker').classList.remove('hidden');
+}
+function choosePerson(name) {
+  S.member = name; store.set('kriens_member', name);
+  S.quiz.ok = 0; S.quiz.total = 0;
+  $('#who').textContent = memberIcon(name) + ' ' + name + ' ▾';
+  $('#who').classList.remove('hidden');
+  $('#picker').classList.add('hidden');
+  $('#r-title').textContent = `🎙 Ghi âm giọng của ${name} & nghe lại`;
+  buildOrder();
+  render();
+}
+$('#who').onclick = openPicker;
+$('#add-person').onclick = () => {
+  const name = $('#new-name').value.trim();
+  if (!name) return;
+  $('#add-person').disabled = true;
+  run('addMember', name, '🙂').then(ms => { S.members = ms; $('#new-name').value = ''; openPicker(); })
+    .catch(e => toast('Không thêm được: ' + (e.message || e)))
+    .finally(() => { $('#add-person').disabled = false; });
+};
+
+/* ---------------- Âm thanh ---------------- */
+function pickVoice() {
+  const vs = speechSynthesis.getVoices();
+  S.voice = vs.find(v => /de-CH/i.test(v.lang)) || vs.find(v => /de-DE/i.test(v.lang)) ||
+            vs.find(v => /^de/i.test(v.lang)) || null;
+}
+if ('speechSynthesis' in window) { pickVoice(); speechSynthesis.onvoiceschanged = pickVoice; }
+
+function stopAll() {
+  if ('speechSynthesis' in window) speechSynthesis.cancel();
+  if (S.player) { S.player.pause(); S.player = null; }
+}
+async function audioSrc(ref) {
+  ref = String(ref || '').trim();
+  if (!ref) return null;
+  if (/^https?:/i.test(ref) && !/google\.com/i.test(ref)) return ref;
+  const m = ref.match(/[-\w]{25,}/);
+  const id = m ? m[0] : ref;
+  if (!(id in S.cache)) S.cache[id] = await run('getAudio', id);
+  return S.cache[id];
+}
+function prefetch(item) {
+  if (!item) return;
+  [item.audioF, item.audioA].forEach(r => { if (r) audioSrc(r).catch(() => {}); });
+}
+function playSrc(src, rate) {
+  return new Promise(res => {
+    const a = new Audio(src);
+    S.player = a; a.playbackRate = rate || S.rate;
+    a.onended = res; a.onerror = res;
+    a.play().catch(res);
+  });
+}
+function speak(text) {
+  return new Promise(res => {
+    if (!('speechSynthesis' in window) || !text) return res();
+    const u = new SpeechSynthesisUtterance(text);
+    u.lang = S.voice ? S.voice.lang : 'de-DE';
+    if (S.voice) u.voice = S.voice;
+    u.rate = S.rate; u.onend = res; u.onerror = res;
+    speechSynthesis.speak(u);
+  });
+}
+async function play(text, ref) {
+  stopAll();
+  if (ref) {
+    try { const src = await audioSrc(ref); if (src) return await playSrc(src); } catch (e) { console.warn(e); }
+  }
+  return speak(text);
+}
+const playQ = it => play(it.frage, it.audioF);
+const playA = it => play(it.antwort, it.audioA);
+
+/* ---------------- Điều hướng ---------------- */
+function inFilter(it) {
+  const f = $('#filter').value, st = status(it);
+  return f === 'all' || (f === 'notknown' ? st !== 'known' : st === f);
+}
+function buildOrder() {
+  const keep = cur();
+  S.order = S.items.map((_, i) => i).filter(i => inFilter(S.items[i]));
+  if (!S.order.length) {
+    if ($('#filter').value !== 'all') toast('Không có câu nào ở mục “' + $('#filter').selectedOptions[0].text + '” – hiện tất cả câu.');
+    $('#filter').value = 'all';
+    S.order = S.items.map((_, i) => i);
+  }
+  if ($('#shuffle').checked) {
+    for (let i = S.order.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [S.order[i], S.order[j]] = [S.order[j], S.order[i]]; }
+  }
+  S.pos = keep ? Math.max(0, S.order.indexOf(S.items.indexOf(keep))) : 0;
+}
+function go(delta) {
+  S.token++; stopAll();
+  S.pos = (S.pos + delta + S.order.length) % S.order.length;
+  render();
+}
+function setMode(m) {
+  S.token++; stopAll(); stopMic(); clearRecording();
+  S.mode = m;
+  document.querySelectorAll('nav button').forEach(b => b.classList.toggle('on', b.dataset.mode === m));
+  ['listen', 'speak', 'quiz', 'list', 'family'].forEach(x => $('#v-' + x).classList.toggle('hidden', x !== m));
+  render(true);
+}
+function render(auto) {
+  if (!S.items.length) return;
+  const it = cur();
+  prefetch(it); prefetch(S.items[S.order[(S.pos + 1) % S.order.length]]);
+  const count = `Câu ${it.nr}  ·  ${S.pos + 1}/${S.order.length}`;
+  updateMarkbar();
+  if (S.mode === 'listen') renderListen(it, count);
+  else if (S.mode === 'speak') renderSpeak(it, count);
+  else if (S.mode === 'quiz') renderQuiz(it, count, auto);
+  else if (S.mode === 'list') renderList();
+  else renderFamily();
+}
+
+/* ---------------- NGHE ---------------- */
+function renderListen(it, count) {
+  $('#l-count').innerHTML = esc(count) + stBadge(it);
+  $('#l-q').textContent = it.frage;
+  $('#l-a').textContent = it.antwort;
+  $('#l-vi').textContent = it.vi;
+  $('#l-a-wrap').classList.toggle('hidden', !it.antwort);
+  $('#l-pa').classList.toggle('hidden', !it.antwort);
+  const hide = $('#l-hide').checked;
+  ['#l-q', '#l-a', '#l-vi'].forEach(s => $(s).classList.toggle('blur', hide));
+}
+function revealListen() { ['#l-q', '#l-a', '#l-vi'].forEach(s => $(s).classList.remove('blur')); }
+
+async function autoPlay() {
+  const btn = $('#l-auto');
+  if (btn.dataset.on) { S.token++; stopAll(); return; }
+  const my = ++S.token;
+  btn.dataset.on = '1'; btn.textContent = '⏹ Dừng';
+  while (my === S.token) {
+    const it = cur();
+    await playQ(it); if (my !== S.token) break;
+    await sleep(1800); if (my !== S.token) break;
+    if (it.antwort) { await playA(it); if (my !== S.token) break; await sleep(1200); }
+    revealListen(); await sleep(1500); if (my !== S.token) break;
+    S.pos = (S.pos + 1) % S.order.length; render();
+  }
+  delete btn.dataset.on; btn.textContent = '⏯ Phát liên tục';
+}
+
+/* ---------------- NÓI ---------------- */
+const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+let rec = null, listening = false;
+
+function speakTarget(it) {
+  const mode = document.querySelector('input[name="s-mode"]:checked').value;
+  return (mode === 'answer' && it.antwort) ? { text: it.antwort, ref: it.audioA, lbl: 'Câu trả lời mẫu (bấm để xem)' }
+                                           : { text: it.frage, ref: it.audioF, lbl: 'Đọc lại câu này' };
+}
+function renderSpeak(it, count) {
+  stopMic();
+  clearRecording();
+  $('#s-count').innerHTML = esc(count) + stBadge(it);
+  $('#s-q').textContent = it.frage;
+  const t = speakTarget(it);
+  $('#s-target-lbl').textContent = t.lbl;
+  $('#s-target').textContent = t.text;
+  $('#s-target').classList.toggle('blur', t.text !== it.frage);
+  $('#s-heard').textContent = '';
+  $('#s-result').innerHTML = '';
+  $('#s-type').value = '';
+  if (!SR) showTyping('Trình duyệt này không có nhận dạng giọng nói. Hãy dùng Google Chrome hoặc Safari mới – hoặc gõ câu trả lời bên dưới.');
+  renderVoices(it);
+}
+function showTyping(msg) {
+  $('#s-type-msg').textContent = msg;
+  $('#s-type-wrap').classList.remove('hidden');
+}
+function stopMic() {
+  if (rec && listening) { try { rec.abort(); } catch (e) {} }
+  listening = false;
+  $('#s-mic').textContent = '🎤 Bấm để nói (chấm điểm)'; $('#s-mic').classList.remove('rec');
+}
+function toggleMic() {
+  if (!SR) return showTyping('Trình duyệt không hỗ trợ nhận dạng giọng nói. Hãy gõ câu trả lời.');
+  if (listening) { rec.stop(); return; }
+  stopAll(); clearRecording();
+  let finalText = '';
+  rec = new SR();
+  rec.lang = 'de-DE'; rec.interimResults = true; rec.continuous = false; rec.maxAlternatives = 1;
+  rec.onresult = e => {
+    let t = '';
+    for (let i = 0; i < e.results.length; i++) t += e.results[i][0].transcript;
+    finalText = t; $('#s-heard').textContent = '🗣 ' + t;
+  };
+  rec.onerror = e => {
+    if (['not-allowed', 'service-not-allowed', 'audio-capture'].includes(e.error))
+      showTyping('Không dùng được micro' + (IN_GAS ? ' trong trang Apps Script – hãy mở bản trên GitHub Pages.' : ' – hãy cho phép micro trong cài đặt trình duyệt.') + ' Tạm thời bạn có thể gõ câu trả lời.');
+    else if (e.error === 'no-speech') $('#s-heard').textContent = 'Không nghe thấy gì – thử lại nhé.';
+    else $('#s-heard').textContent = 'Lỗi: ' + e.error;
+  };
+  rec.onend = () => {
+    listening = false;
+    $('#s-mic').textContent = '🎤 Bấm để nói (chấm điểm)'; $('#s-mic').classList.remove('rec');
+    if (finalText) grade(finalText);
+  };
+  try { rec.start(); } catch (e) { return showTyping('Không khởi động được micro: ' + e.message); }
+  listening = true;
+  $('#s-mic').textContent = '⏹ Đang nghe… bấm để dừng'; $('#s-mic').classList.add('rec');
+}
+function words(s) {
+  return String(s || '').toLowerCase().replace(/ß/g, 'ss')
+    .normalize('NFD').replace(/[̀-ͯ]/g, '')
+    .replace(/[^a-z0-9\s]/g, ' ').split(/\s+/).filter(Boolean);
+}
+function grade(spoken) {
+  const it = cur(), t = speakTarget(it);
+  const pool = {};
+  words(spoken).forEach(w => pool[w] = (pool[w] || 0) + 1);
+  let hit = 0, total = 0;
+  const html = t.text.split(/\s+/).filter(Boolean).map(tok => {
+    const w = words(tok)[0];
+    if (!w) return esc(tok);
+    total++;
+    if (pool[w]) { pool[w]--; hit++; return `<span class="w-ok">${esc(tok)}</span>`; }
+    return `<span class="w-miss">${esc(tok)}</span>`;
+  }).join(' ');
+  const pct = total ? Math.round(hit / total * 100) : 0;
+  const msg = pct >= 85 ? '🎉 Rất tốt!' : pct >= 60 ? '👍 Khá ổn – nghe mẫu và thử lại.' : '💪 Nghe lại mẫu rồi thử lần nữa.';
+  $('#s-target').classList.remove('blur');
+  $('#s-result').innerHTML = `<div class="score" style="color:${pct >= 60 ? 'var(--ok)' : 'var(--bad)'}">${pct}%</div>
+    <div>${msg}</div><div class="ans mt">${html}</div>
+    <div class="mute" style="font-size:13px;margin-top:6px">Xanh = đã nói đúng · Đỏ gạch chấm = còn thiếu</div>`;
+  record(it, 'speak', pct);
+}
+
+/* ---------------- GHI ÂM GIỌNG MÌNH ---------------- */
+const R = { rec: null, stream: null, chunks: [], blob: null, url: null, t0: 0 };
+
+function setRecButtons(has) { ['#r-play', '#r-cmp', '#r-save'].forEach(s => $(s).disabled = !has); }
+function clearRecording() {
+  if (R.rec && R.rec.state === 'recording') {
+    R.rec.onstop = () => { if (R.stream) R.stream.getTracks().forEach(t => t.stop()); };
+    R.rec.stop();
+  }
+  if (R.url) URL.revokeObjectURL(R.url);
+  R.rec = null; R.blob = null; R.url = null;
+  $('#r-rec').textContent = '⏺ Ghi âm'; $('#r-rec').classList.remove('recording');
+  $('#r-status').textContent = '';
+  $('#r-file').value = '';
+  setRecButtons(false);
+}
+function setRecording(blob, note) {
+  if (R.url) URL.revokeObjectURL(R.url);
+  R.blob = blob; R.url = URL.createObjectURL(blob);
+  setRecButtons(true);
+  $('#r-status').textContent = note || 'Đã ghi xong. Bấm “Nghe lại” hoặc so sánh với giọng mẫu.';
+}
+async function toggleRecord() {
+  if (R.rec && R.rec.state === 'recording') { R.rec.stop(); return; }
+  S.token++; stopAll(); stopMic();
+  try {
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia || !window.MediaRecorder) throw new Error('Trình duyệt không hỗ trợ ghi âm');
+    R.stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+  } catch (e) {
+    $('#r-file-wrap').classList.remove('hidden');
+    $('#r-status').textContent = 'Không mở được micro (' + (e.name || e.message) + ').' +
+      (IN_GAS ? ' Trang Apps Script thường bị chặn micro – hãy dùng bản trên GitHub Pages.' : ' Hãy cho phép micro trong cài đặt trình duyệt.');
+    return;
+  }
+  R.chunks = [];
+  R.rec = new MediaRecorder(R.stream);
+  R.rec.ondataavailable = e => { if (e.data && e.data.size) R.chunks.push(e.data); };
+  R.rec.onstop = () => {
+    R.stream.getTracks().forEach(t => t.stop());
+    const secs = ((Date.now() - R.t0) / 1000).toFixed(1);
+    $('#r-rec').textContent = '⏺ Ghi lại'; $('#r-rec').classList.remove('recording');
+    setRecording(new Blob(R.chunks, { type: R.rec.mimeType || 'audio/webm' }), `Đã ghi ${secs} giây. Bấm “Nghe lại” hoặc so sánh với giọng mẫu.`);
+  };
+  R.t0 = Date.now();
+  R.rec.start();
+  $('#r-rec').textContent = '⏹ Dừng ghi'; $('#r-rec').classList.add('recording');
+  $('#r-status').textContent = 'Đang ghi âm… nói xong thì bấm “Dừng ghi”.';
+}
+async function compareRecording() {
+  if (!R.url) return;
+  const my = ++S.token, t = speakTarget(cur());
+  $('#r-status').textContent = '🔊 Giọng mẫu…';
+  await play(t.text, t.ref); if (my !== S.token) return;
+  await sleep(600); if (my !== S.token) return;
+  $('#r-status').textContent = '🗣 Giọng của bạn…';
+  await playSrc(R.url, 1);
+  if (my === S.token) $('#r-status').textContent = 'Xong. Bạn có thể ghi lại nếu muốn nói tốt hơn.';
+}
+function saveRecordingToDrive() {
+  if (!R.blob || !S.member) return;
+  const it = cur(), who = S.member;
+  $('#r-save').disabled = true;
+  $('#r-status').textContent = 'Đang lưu vào Google Drive…';
+  const fr = new FileReader();
+  fr.onload = () => run('saveRecording', fr.result, it.id, who).then(url => {
+    it.recs = it.recs || {};
+    it.recs[who] = url;
+    $('#r-status').textContent = `✅ Đã lưu giọng của ${who} cho câu này.`;
+    if (cur() === it) renderVoices(it);
+  }).catch(err => {
+    $('#r-save').disabled = false;
+    $('#r-status').textContent = 'Lưu thất bại: ' + (err && err.message ? err.message : err);
+  });
+  fr.readAsDataURL(R.blob);
+}
+function renderVoices(it) {
+  const recs = it.recs || {};
+  const names = Object.keys(recs);
+  $('#r-voices-wrap').classList.toggle('hidden', !names.length);
+  const box = $('#r-voices');
+  box.innerHTML = '';
+  names.sort((a, b) => (b === S.member) - (a === S.member)).forEach(name => {
+    const row = document.createElement('div');
+    row.className = 'voice';
+    row.innerHTML = `<span>${esc(memberIcon(name))} ${esc(name)}${name === S.member ? ' <span class="mute">(bạn)</span>' : ''}</span>`;
+    const b = document.createElement('button');
+    b.className = 'btn ghost'; b.textContent = '▶ Nghe';
+    b.onclick = async () => {
+      S.token++; stopAll();
+      b.textContent = '…';
+      try { const src = await audioSrc(recs[name]); b.textContent = '▶ Nghe'; if (src) await playSrc(src, 1); else toast('Không mở được bản ghi.'); }
+      catch (e) { b.textContent = '▶ Nghe'; toast('Không mở được bản ghi.'); }
+    };
+    row.appendChild(b);
+    box.appendChild(row);
+  });
+}
+
+/* ---------------- HIỂU (trắc nghiệm) ---------------- */
+function quizField() {
+  if (S.items.some(x => x.antwort)) return 'antwort';
+  if (S.items.some(x => x.vi)) return 'vi';
+  return 'frage';
+}
+function renderQuiz(it, count, auto) {
+  const f = S.quiz.field = quizField();
+  S.quiz.answered = false;
+  $('#q-count').innerHTML = esc(count) + stBadge(it);
+  $('#q-score').textContent = S.quiz.total ? `Đúng ${S.quiz.ok}/${S.quiz.total}` : '';
+  $('#q-instr').textContent = f === 'antwort' ? 'Nghe câu hỏi (không nhìn chữ) và chọn câu trả lời đúng.'
+                           : f === 'vi' ? 'Nghe câu hỏi và chọn nghĩa tiếng Việt đúng.' : 'Nghe và chọn câu bạn vừa nghe.';
+  $('#q-reveal').classList.add('hidden');
+  $('#q-q').textContent = it.frage; $('#q-a').textContent = it.antwort; $('#q-vi').textContent = it.vi;
+  $('#q-a-wrap').classList.toggle('hidden', !it.antwort);
+
+  const correct = it[f];
+  const others = [...new Set(S.items.filter(x => x !== it && x[f] && x[f] !== correct).map(x => x[f]))];
+  for (let i = others.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [others[i], others[j]] = [others[j], others[i]]; }
+  const opts = [correct, ...others.slice(0, 3)].sort(() => Math.random() - .5);
+  $('#q-opts').innerHTML = '';
+  opts.forEach(o => {
+    const b = document.createElement('button');
+    b.className = 'opt'; b.textContent = o;
+    b.onclick = () => answerQuiz(b, o === correct, correct);
+    $('#q-opts').appendChild(b);
+  });
+  if (auto) playQ(it);
+}
+function answerQuiz(btn, ok, correct) {
+  if (S.quiz.answered) return;
+  S.quiz.answered = true; S.quiz.total++; if (ok) S.quiz.ok++;
+  btn.classList.add(ok ? 'ok' : 'bad');
+  if (!ok) [...$('#q-opts').children].forEach(b => { if (b.textContent === correct) b.classList.add('ok'); });
+  $('#q-reveal').classList.remove('hidden');
+  $('#q-score').textContent = `Đúng ${S.quiz.ok}/${S.quiz.total}`;
+  record(cur(), 'quiz', ok ? 1 : 0);
+}
+
+/* ---------------- DANH SÁCH ---------------- */
+function renderList() {
+  const q = $('#search').value.toLowerCase();
+  const box = $('#list');
+  box.innerHTML = '';
+  S.items.forEach(it => {
+    if (q && !(it.frage + ' ' + it.antwort + ' ' + it.vi).toLowerCase().includes(q)) return;
+    if (!inFilter(it)) return;
+    const p = myProg(it.id);
+    const badges = (p.speak != null ? `<span class="badge ${p.speak >= 85 ? 'ok' : ''}">🎤 ${p.speak}%</span>` : '') +
+                   (p.qTry ? `<span class="badge ${p.qOk === p.qTry ? 'ok' : ''}">🧠 ${p.qOk}/${p.qTry}</span>` : '');
+    const d = document.createElement('div');
+    d.className = 'item';
+    d.innerHTML = `<div class="row between"><b>${esc(it.nr)}.${stBadge(it)}</b><span>${badges}</span></div>
+      <div class="de" style="font-size:17px">${esc(it.frage)}</div>
+      ${it.antwort ? `<div class="ans" style="font-size:16px">→ ${esc(it.antwort)}</div>` : ''}
+      ${it.vi ? `<div class="vi">${esc(it.vi)}</div>` : ''}
+      <div class="row mt">
+        <button class="btn ghost" data-a="q">▶ Hỏi</button>
+        ${it.antwort ? '<button class="btn ghost" data-a="a">▶ Đáp</button>' : ''}
+        <button class="btn ghost" data-a="go">Luyện câu này</button>
+      </div>`;
+    d.querySelector('[data-a="q"]').onclick = () => playQ(it);
+    const ba = d.querySelector('[data-a="a"]'); if (ba) ba.onclick = () => playA(it);
+    d.querySelector('[data-a="go"]').onclick = () => { S.pos = S.order.indexOf(S.items.indexOf(it)); setMode('listen'); };
+    box.appendChild(d);
+  });
+  if (!box.children.length) box.innerHTML = '<p class="mute">Không tìm thấy câu nào.</p>';
+}
+
+/* ---------------- CẢ NHÀ ---------------- */
+function summary(member) {
+  const m = S.progress[member] || {};
+  let known = 0, review = 0, speakSum = 0, speakN = 0, qOk = 0, qTry = 0, last = 0;
+  S.items.forEach(it => {
+    const p = m[it.id];
+    if (!p) return;
+    if (status(it, member) === 'review') review++;
+    if (p.speak != null) { speakSum += p.speak; speakN++; }
+    qOk += p.qOk; qTry += p.qTry;
+    if (status(it, member) === 'known') known++;
+    if (p.last > last) last = p.last;
+  });
+  return { known, review, speakAvg: speakN ? Math.round(speakSum / speakN) : null, speakN, qOk, qTry, last };
+}
+function ago(t) {
+  if (!t) return 'chưa luyện';
+  const d = Math.floor((Date.now() - t) / 86400000);
+  return d <= 0 ? 'hôm nay' : d === 1 ? 'hôm qua' : d + ' ngày trước';
+}
+function renderFamily() {
+  const total = S.items.length;
+  const rows = S.members.map(m => ({ m, s: summary(m.name) })).sort((a, b) => b.s.known - a.s.known);
+  $('#fam').innerHTML = rows.map(({ m, s }, i) => {
+    const pct = total ? Math.round(s.known / total * 100) : 0;
+    return `<div class="famrow ${m.name === S.member ? 'me' : ''}">
+      <div class="row between"><b style="font-size:17px">${i === 0 && s.known ? '🏆 ' : ''}${esc(m.icon)} ${esc(m.name)}</b>
+        <span><b>${s.known}</b>/${total} câu thuộc</span></div>
+      <div class="bar"><i style="width:${pct}%"></i></div>
+      <div class="stats">
+        <span>🎤 Nói: <b>${s.speakAvg == null ? '–' : s.speakAvg + '%'}</b> (${s.speakN} câu)</span>
+        <span>🧠 Hiểu: <b>${s.qTry ? Math.round(s.qOk / s.qTry * 100) + '%' : '–'}</b> (${s.qTry} lần)</span>
+        <span>↻ Ôn lại: <b>${s.review}</b></span>
+        <span>🕒 ${ago(s.last)}</span>
+      </div></div>`;
+  }).join('') || '<p class="mute">Chưa có thành viên.</p>';
+
+  const weak = S.items.map(it => {
+    const scores = [];
+    S.members.forEach(m => {
+      const p = (S.progress[m.name] || {})[it.id];
+      if (!p) return;
+      if (p.speak != null) scores.push(p.speak);
+      if (p.qTry) scores.push(p.qOk / p.qTry * 100);
+    });
+    return { it, avg: scores.length ? scores.reduce((a, b) => a + b, 0) / scores.length : null };
+  }).filter(x => x.avg != null && x.avg < 85).sort((a, b) => a.avg - b.avg).slice(0, 5);
+  const box = $('#weak');
+  box.innerHTML = weak.length ? '' : '<p class="mute">Chưa có dữ liệu – hãy luyện thêm vài câu nhé.</p>';
+  weak.forEach(({ it, avg }) => {
+    const d = document.createElement('div');
+    d.className = 'item';
+    d.innerHTML = `<div class="row between"><b>${esc(it.nr)}. </b><span class="badge">${Math.round(avg)}%</span></div>
+      <div style="font-size:16px;margin-top:4px">${esc(it.frage)}</div>`;
+    const b = document.createElement('button');
+    b.className = 'btn ghost mt'; b.textContent = 'Luyện câu này';
+    b.onclick = () => { S.pos = S.order.indexOf(S.items.indexOf(it)); setMode('speak'); };
+    d.appendChild(b);
+    box.appendChild(d);
+  });
+}
+$('#f-refresh').onclick = () => {
+  $('#f-refresh').disabled = true;
+  run('getProgress').then(d => { S.progress = d.progress || {}; S.members = d.members || S.members; buildOrder(); renderFamily(); toast('Đã cập nhật tiến độ cả nhà.'); })
+    .catch(e => toast('Không tải được: ' + (e.message || e)))
+    .finally(() => { $('#f-refresh').disabled = false; });
+};
+
+/* ---------------- Sự kiện ---------------- */
+document.querySelectorAll('nav button').forEach(b => b.onclick = () => setMode(b.dataset.mode));
+$('#rate').onchange = e => { S.rate = Number(e.target.value); store.set('kriens_rate', S.rate); if (S.player) S.player.playbackRate = S.rate; };
+$('#shuffle').onchange = () => { buildOrder(); render(); };
+$('#filter').onchange = () => { S.pos = 0; S.order = []; buildOrder(); S.pos = 0; render(true); };
+document.querySelectorAll('.mk').forEach(b => b.onclick = () => setMark(Number(b.dataset.mark)));
+$('#jump').onchange = e => {
+  const n = String(e.target.value).trim();
+  const idx = S.items.findIndex((x, i) => String(x.nr) === n || i + 1 === Number(n));
+  if (idx >= 0) { S.pos = S.order.indexOf(idx); render(); }
+  e.target.value = '';
+};
+$('#l-pq').onclick = () => { S.token++; playQ(cur()); };
+$('#l-pa').onclick = () => { S.token++; playA(cur()); };
+$('#l-show').onclick = revealListen;
+['#l-q', '#l-a', '#l-vi'].forEach(s => $(s).onclick = () => $(s).classList.remove('blur'));
+$('#l-hide').onchange = () => render();
+$('#l-prev').onclick = () => go(-1);
+$('#l-next').onclick = () => go(1);
+$('#l-auto').onclick = autoPlay;
+
+$('#s-pq').onclick = () => playQ(cur());
+$('#s-pt').onclick = () => { const t = speakTarget(cur()); play(t.text, t.ref); };
+$('#s-target').onclick = () => $('#s-target').classList.remove('blur');
+$('#s-mic').onclick = toggleMic;
+$('#s-check').onclick = () => { const v = $('#s-type').value.trim(); if (v) grade(v); };
+document.querySelectorAll('input[name="s-mode"]').forEach(r => r.onchange = () => render());
+$('#r-rec').onclick = toggleRecord;
+$('#r-play').onclick = () => { if (R.url) { S.token++; stopAll(); playSrc(R.url, 1); } };
+$('#r-cmp').onclick = compareRecording;
+$('#r-save').onclick = saveRecordingToDrive;
+$('#r-file').onchange = e => { const f = e.target.files[0]; if (f) setRecording(f, 'Đã nhận file ghi âm: ' + f.name); };
+$('#s-prev').onclick = () => go(-1);
+$('#s-next').onclick = () => go(1);
+
+$('#q-play').onclick = () => playQ(cur());
+$('#q-prev').onclick = () => { S.token++; stopAll(); S.pos = (S.pos - 1 + S.order.length) % S.order.length; render(true); };
+$('#q-next').onclick = () => { S.token++; stopAll(); S.pos = (S.pos + 1) % S.order.length; render(true); };
+
+$('#search').oninput = renderList;
+
+/* ---------------- Khởi động ---------------- */
+S.rate = store.get('kriens_rate', 1);
+$('#rate').value = String(S.rate);
+
+function showSetup(err) {
+  ['listen', 'speak', 'quiz', 'list', 'family'].forEach(x => $('#v-' + x).classList.add('hidden'));
+  $('#markbar').classList.add('hidden');
+  $('#loading').classList.add('hidden');
+  $('#picker').classList.add('hidden');
+  $('#v-setup').classList.remove('hidden');
+  $('#api-url').value = API_URL || '';
+  $('#setup-err').classList.toggle('hidden', !err);
+  $('#setup-err').textContent = err ? '⚠️ ' + err : '';
+  updateTestLink();
+}
+function updateTestLink() {
+  const u = $('#api-url').value.trim();
+  const okUrl = /^https:\/\/script\.google\.com\/.+\/exec$/.test(u);
+  $('#api-test').classList.toggle('hidden', !okUrl);
+  if (okUrl) $('#api-test').href = u + '?fn=getProgress';
+}
+$('#api-url').oninput = updateTestLink;
+$('#api-save').onclick = () => {
+  const u = $('#api-url').value.trim().replace(/\?.*$/, '');
+  if (!/^https:\/\/script\.google\.com\/.+\/exec$/.test(u))
+    return showSetup('Link phải bắt đầu bằng https://script.google.com/ và kết thúc bằng /exec');
+  API_URL = u;
+  $('#api-save').disabled = true; $('#api-save').textContent = 'Đang kết nối…';
+  load().finally(() => { $('#api-save').disabled = false; $('#api-save').textContent = 'Kết nối'; });
+};
+$('#change-api').onclick = () => showSetup('');
+if (!IN_GAS) $('#change-api').classList.remove('hidden');
+
+function load() {
+  if (!IN_GAS && !API_URL) { showSetup(''); return Promise.resolve(); }
+  $('#v-setup').classList.add('hidden');
+  $('#loading').classList.remove('hidden');
+  $('#loading').textContent = 'Đang tải câu hỏi…';
+  return run('getData').then(d => {
+  if (!IN_GAS) store.set('kriens_api', API_URL);
+  S.items = d.items || [];
+  S.members = d.members || [];
+  S.progress = d.progress || {};
+  $('#title').textContent = d.title;
+  $('#loading').classList.add('hidden');
+  if (!S.items.length) {
+    $('#loading').classList.remove('hidden');
+    $('#loading').textContent = 'Sheet chưa có câu nào. Mở Sheet › menu 🎧 WebApp › “Chuẩn bị cấu trúc Sheet”.';
+    return;
+  }
+  $('#sub').textContent = `${S.items.length} câu · Nghe · Nói · Hiểu`;
+  buildOrder();
+  setMode('listen');
+  const saved = store.get('kriens_member', null);
+  if (saved && S.members.some(m => m.name === saved)) choosePerson(saved);
+  else openPicker();
+}).catch(err => {
+  const msg = err && err.message ? err.message : String(err);
+  if (!IN_GAS) showSetup(msg);
+  else $('#loading').textContent = 'Không tải được dữ liệu: ' + msg;
+});
+}
+load();
+</script>
+</body>
+</html>
