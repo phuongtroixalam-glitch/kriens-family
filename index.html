@@ -610,10 +610,14 @@ function toggleMic() {
     finalText = t; $('#s-heard').textContent = '🗣 ' + t;
   };
   rec.onerror = e => {
+    // iPhone/Safari báo "aborted" mỗi khi phiên nghe kết thúc – không phải lỗi thật, bỏ qua.
+    if (e.error === 'aborted') return;
+    if (finalText && e.error !== 'not-allowed') return;   // đã nghe được câu nói → giữ nguyên kết quả
     if (['not-allowed', 'service-not-allowed', 'audio-capture'].includes(e.error))
       showTyping('Không dùng được micro' + (IN_GAS ? ' trong trang Apps Script – hãy mở bản trên GitHub Pages.' : ' – hãy cho phép micro trong cài đặt trình duyệt.') + ' Tạm thời bạn có thể gõ câu trả lời.');
     else if (e.error === 'no-speech') $('#s-heard').textContent = 'Không nghe thấy gì – thử lại nhé.';
-    else $('#s-heard').textContent = 'Lỗi: ' + e.error;
+    else if (e.error === 'network') $('#s-heard').textContent = 'Không có mạng – nhận dạng giọng nói cần Internet.';
+    else $('#s-heard').textContent = 'Chưa nghe rõ (' + e.error + ') – thử lại nhé.';
   };
   rec.onend = () => {
     listening = false;
