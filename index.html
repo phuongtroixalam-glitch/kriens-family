@@ -4,6 +4,7 @@
 <base target="_top">
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Einbürgerungskurs</title>
 <style>
   :root{--bg:#f5f6fa;--card:#fff;--ink:#1d2433;--mute:#6b7385;--pri:#c8281d;--pri-soft:#fdeceb;
         --ok:#1f9d55;--ok-soft:#e5f6ec;--bad:#d64545;--bad-soft:#fdecec;--line:#e2e5ec}
@@ -90,7 +91,7 @@
 <body>
 <header>
   <div>
-    <h1 id="title">Kriens – 45 Fragen</h1>
+    <h1 id="title">Einbürgerungskurs</h1>
     <small id="sub">Luyện Nghe · Nói · Hiểu</small>
   </div>
   <button id="who" class="hidden">👤 Chọn người</button>
@@ -1020,7 +1021,8 @@ function load() {
   buildCatFilter();
   S.members = d.members || [];
   S.progress = d.progress || {};
-  $('#title').textContent = d.title;
+  // Tên app cố định ở giao diện (không phụ thuộc Apps Script)
+  document.title = $('#title').textContent;
   $('#loading').classList.add('hidden');
   if (!S.items.length) {
     $('#loading').classList.remove('hidden');
