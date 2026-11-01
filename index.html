@@ -339,12 +339,21 @@ function toast(msg) {
   $('#toast').textContent = msg; $('#toast').classList.remove('hidden');
   clearTimeout(toastTimer); toastTimer = setTimeout(() => $('#toast').classList.add('hidden'), 3500);
 }
-/** Khối "Giải thích" + mọi cột khác của câu (để không bỏ sót cột nào trong Sheet). */
+/** Chỉ một dòng giải thích (nếu Sheet có cột "Giải thích" riêng). */
 function exHtml(it) {
-  const parts = [];
-  if (it.explain) parts.push(`<div class="exl">💡 Giải thích</div><div>${esc(it.explain)}</div>`);
-  (it.extras || []).forEach(x => parts.push(`<div class="exl">${esc(x.label)}</div><div>${esc(x.value)}</div>`));
-  return parts.join('');
+  return it.explain ? `<div>${esc(it.explain)}</div>` : '';
+}
+/** Tương thích bản Apps Script cũ: lấy nghĩa tiếng Việt từ cột "Bedeutung_VI" nếu nó bị xếp vào nhóm cột khác. */
+function normalizeItems(items) {
+  items.forEach(it => {
+    if (!it.vi && it.extras) {
+      const m = it.extras.find(x => /bedeutung|_vi\b|\bvi$|tiếng việt|nghĩa|dịch/i.test(x.label));
+      if (m) it.vi = m.value;
+    }
+    delete it.extras;
+    if (it.explain && it.explain === it.vi) it.explain = '';
+  });
+  return items;
 }
 function fillEx(sel, it) {
   const h = exHtml(it);
@@ -583,7 +592,7 @@ function renderSpeak(it, count) {
   $('#s-exbtn').classList.toggle('hidden', !hasEx);
   $('#s-exbtn').textContent = '💡 Xem giải thích';
   $('#s-ex').classList.add('hidden');
-  $('#s-ex').innerHTML = (it.vi ? `<div class="exl">🇻🇳 Tiếng Việt</div><div>${esc(it.vi)}</div>` : '') + exHtml(it);
+  $('#s-ex').innerHTML = (it.vi ? `<div>${esc(it.vi)}</div>` : '') + exHtml(it);
   $('#s-type').value = '';
   if (!SR) showTyping('Trình duyệt này không có nhận dạng giọng nói. Hãy dùng Google Chrome hoặc Safari mới – hoặc gõ câu trả lời bên dưới.');
   renderVoices(it);
@@ -978,7 +987,7 @@ function load() {
   $('#loading').textContent = 'Đang tải câu hỏi…';
   return run('getData').then(d => {
   if (!IN_GAS) store.set('kriens_api', API_URL);
-  S.items = d.items || [];
+  S.items = normalizeItems(d.items || []);
   S.members = d.members || [];
   S.progress = d.progress || {};
   $('#title').textContent = d.title;
