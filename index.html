@@ -85,6 +85,15 @@
   .st-learning{background:#e7eefc;color:#2f5bc0}
   .st-warn{background:#fff3d6;color:#a86d00}
   .st-new{background:#eef0f5;color:var(--mute)}
+  /* Thanh chuyển câu cố định ở đáy (Nghe / Nói / Hiểu) */
+  .navbar{position:fixed;left:0;right:0;bottom:0;z-index:15;display:flex;gap:8px;align-items:center;
+    padding:8px 12px calc(8px + env(safe-area-inset-bottom));background:rgba(255,255,255,.96);
+    border-top:1px solid var(--line);box-shadow:0 -2px 10px rgba(0,0,0,.06);backdrop-filter:blur(6px)}
+  .navbar button{flex:1;padding:13px 8px;font-size:17px;border-radius:12px}
+  .navbar #nb-pos{min-width:64px;text-align:center;font-size:14px;color:var(--mute)}
+  body.has-navbar main{padding-bottom:96px}
+  body.has-navbar #toast{bottom:90px}
+  #l-prev,#l-next,#s-prev,#s-next,#q-prev,#q-next{display:none!important}
   #toast{position:fixed;left:50%;bottom:18px;transform:translateX(-50%);background:#1d2433;color:#fff;padding:10px 14px;border-radius:10px;font-size:14px;z-index:30;max-width:90%}
 </style>
 </head>
@@ -305,6 +314,12 @@
   </div>
 </div>
 
+<div id="navbar" class="navbar hidden">
+  <button class="btn ghost" id="nb-prev">◀ Trước</button>
+  <span id="nb-pos"></span>
+  <button class="btn" id="nb-next">Sau ▶</button>
+</div>
+
 <div id="toast" class="hidden"></div>
 
 <script>
@@ -441,6 +456,7 @@ function openPicker() {
     box.appendChild(b);
   });
   $('#picker').classList.remove('hidden');
+  updateNavbar();
 }
 function choosePerson(name) {
   S.member = name; store.set('kriens_member', name);
@@ -550,6 +566,23 @@ function buildOrder() {
   }
   S.pos = keep ? Math.max(0, S.order.indexOf(S.items.indexOf(keep))) : 0;
 }
+/** Chuyển câu từ thanh dưới đáy hoặc vuốt ngang. Ở phần Hiểu: tự phát câu hỏi mới. */
+function navGo(delta) {
+  if (!S.order.length) return;
+  stopMic();
+  if (S.mode === 'quiz') {
+    S.token++; stopAll();
+    S.pos = (S.pos + delta + S.order.length) % S.order.length;
+    render(true);
+  } else go(delta);
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+function updateNavbar() {
+  const show = ['listen', 'speak', 'quiz'].includes(S.mode) && S.order.length > 0 && $('#picker').classList.contains('hidden');
+  $('#navbar').classList.toggle('hidden', !show);
+  document.body.classList.toggle('has-navbar', show);
+  if (show) $('#nb-pos').textContent = (S.pos + 1) + ' / ' + S.order.length;
+}
 function go(delta) {
   S.token++; stopAll();
   S.pos = (S.pos + delta + S.order.length) % S.order.length;
@@ -560,6 +593,7 @@ function setMode(m) {
   S.mode = m;
   document.querySelectorAll('nav button').forEach(b => b.classList.toggle('on', b.dataset.mode === m));
   ['listen', 'speak', 'quiz', 'list', 'family'].forEach(x => $('#v-' + x).classList.toggle('hidden', x !== m));
+  updateNavbar();
   render(true);
 }
 function render(auto) {
@@ -568,6 +602,7 @@ function render(auto) {
   prefetch(it); prefetch(S.items[S.order[(S.pos + 1) % S.order.length]]);
   const count = `Câu ${it.nr}  ·  ${S.pos + 1}/${S.order.length}`;
   updateMarkbar();
+  updateNavbar();
   if (S.mode === 'listen') { renderListen(it, count); updateBgButton(); }
   else if (S.mode === 'speak') renderSpeak(it, count);
   else if (S.mode === 'quiz') renderQuiz(it, count, auto);
@@ -1104,6 +1139,25 @@ $('#q-prev').onclick = () => { S.token++; stopAll(); S.pos = (S.pos - 1 + S.orde
 $('#q-next').onclick = () => { S.token++; stopAll(); S.pos = (S.pos + 1) % S.order.length; render(true); };
 
 $('#search').oninput = renderList;
+$('#nb-prev').onclick = () => navGo(-1);
+$('#nb-next').onclick = () => navGo(1);
+// Vuốt ngang trên thẻ câu hỏi để chuyển câu (vuốt trái = câu sau, vuốt phải = câu trước)
+(() => {
+  let x0 = null, y0 = 0, t0 = 0;
+  ['#v-listen', '#v-speak', '#v-quiz'].forEach(sel => {
+    const el = $(sel);
+    el.addEventListener('touchstart', e => {
+      if (e.touches.length !== 1 || e.target.closest('textarea, input, select, audio, #bg-card')) { x0 = null; return; }
+      x0 = e.touches[0].clientX; y0 = e.touches[0].clientY; t0 = Date.now();
+    }, { passive: true });
+    el.addEventListener('touchend', e => {
+      if (x0 == null) return;
+      const dx = e.changedTouches[0].clientX - x0, dy = e.changedTouches[0].clientY - y0;
+      x0 = null;
+      if (Math.abs(dx) > 70 && Math.abs(dy) < 45 && Date.now() - t0 < 600) navGo(dx < 0 ? 1 : -1);
+    }, { passive: true });
+  });
+})();
 
 /* ---------------- Khởi động ---------------- */
 S.rate = store.get('kriens_rate', 1);
