@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>PES</title>
+<link rel="apple-touch-icon" sizes="180x180" href="pes-180.png">
+<link rel="icon" type="image/png" href="pes-180.png">
+<meta name="apple-mobile-web-app-title" content="PES">
+<meta name="theme-color" content="#1f4e8c">
+<script>
+  // Lối tắt màn hình chính: mở từ biểu tượng (có ?go=1) → chuyển thẳng sang trang đích.
+  var TARGET = 'https://pes.post.ch';
+  if (/[?&]go=1\b/.test(location.search)) location.replace(TARGET);
+</script>
+<style>
+  body{margin:0;font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;background:#f5f6fa;color:#1d2433}
+  main{max-width:520px;margin:0 auto;padding:28px 16px}
+  img{width:96px;height:96px;border-radius:22px;display:block;margin:0 auto 16px;box-shadow:0 4px 14px rgba(0,0,0,.15)}
+  h1{font-size:20px;text-align:center;margin:0 0 18px}
+  ol{line-height:1.7;padding-left:22px;background:#fff;border:1px solid #e2e5ec;border-radius:14px;padding:14px 14px 14px 36px}
+  a.btn{display:block;text-align:center;background:#1f4e8c;color:#fff;text-decoration:none;padding:14px;border-radius:12px;font-size:17px;margin-top:16px}
+  p.mute{color:#6b7385;font-size:14px}
+</style>
+</head>
+<body>
+<main>
+  <img src="pes-180.png" alt="">
+  <h1>Lối tắt tới pes.post.ch</h1>
+  <ol>
+    <li>Bấm nút <b>Chia sẻ</b> của Safari (ô vuông có mũi tên lên).</li>
+    <li>Chọn <b>Thêm vào Màn hình chính</b>.</li>
+    <li>Sửa tên nếu muốn, rồi bấm <b>Thêm</b>.</li>
+  </ol>
+  <p class="mute">Từ đó, bấm biểu tượng trên màn hình chính sẽ mở thẳng pes.post.ch.</p>
+  <a class="btn" href="https://pes.post.ch">Mở pes.post.ch ngay</a>
+</main>
+<script>
+  // Đổi địa chỉ trang thành ?go=1 (không tải lại) để lối tắt được lưu kèm lệnh chuyển tiếp.
+  try { history.replaceState(null, '', location.pathname + '?go=1'); } catch (e) {}
+</script>
+</body>
+</html>
