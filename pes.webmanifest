@@ -1,0 +1,9 @@
+{
+  "name": "PES",
+  "short_name": "PES",
+  "start_url": "pes.html?go=1",
+  "display": "browser",
+  "background_color": "#f6b014",
+  "theme_color": "#f6b014",
+  "icons": [{ "src": "pes-icon-v2.png", "sizes": "180x180", "type": "image/png" }]
+}
