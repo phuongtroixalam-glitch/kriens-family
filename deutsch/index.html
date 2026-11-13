@@ -139,7 +139,7 @@ textarea.tx{min-height:200px;resize:vertical}
  * Deutsch A2–B2 – app học tiếng Đức cho cả nhà.
  * Dữ liệu bài học: data/*.json (tĩnh). Tiến độ + audio ElevenLabs: Apps Script (Deutsch.gs).
  * ===================================================================== */
-const V = '20261113';
+const V = '20261113b';
 const DEFAULT_API_URL = 'https://script.google.com/macros/s/AKfycbzSZ02Kpb7Fo_6y9aNIbtrq27O_OA0T8KlBT-CSD7nDxbAO8NkySs3-PlUc3BbEzWk/exec';
 const $ = s => document.querySelector(s);
 const esc = s => String(s == null ? '' : s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
@@ -1109,7 +1109,17 @@ async function boot() {
     if (S.member) setMember(S.member);
     $('#sync').textContent = '✓';
   } catch (e) {
-    $('#sync').textContent = '⚠︎'; toast('Chưa kết nối được máy chủ: ' + e.message + ' – vẫn học được, tiến độ lưu trong máy.');
+    $('#sync').textContent = '⚠︎';
+    // Deutsch.gs chưa được triển khai → vẫn lấy danh sách thành viên từ app Einbürgerungskurs (đã có sẵn)
+    try {
+      const d = await run('getProgress');
+      if (d && d.members && d.members.length) {
+        S.members = d.members; store.set('de_members', S.members);
+        if (S.member === 'Tôi' || !S.members.find(m => m.name === S.member)) { S.member = ''; store.set('de_member', ''); }
+        else setMember(S.member);
+      }
+    } catch (e2) {}
+    toast('Tiến độ tạm lưu trong máy – cần dán Deutsch.gs và triển khai phiên bản mới để lưu lên Sheet.');
     if (!S.members.length) S.members = [{ name: 'Tôi', icon: '🙂' }];
   }
   render();
