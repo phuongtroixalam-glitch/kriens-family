@@ -561,7 +561,7 @@ function renderHome(m) {
     <div class="row" style="margin-top:8px"><span class="grow">Tốc độ đọc</span><select class="tx" id="set-rate" style="width:auto">${[0.75, 0.85, 1, 1.15].map(n => `<option value="${n}" ${n === S.rate ? 'selected' : ''}>${n}×</option>`).join('')}</select></div>
     <p class="small mute">Audio ElevenLabs: ${Object.keys(S.amap).length.toLocaleString()} / ${a.total ? a.total.toLocaleString() : '?'} file đã tạo${a.stop ? ' – ⛔ ' + esc(a.stop) : ''}. Câu nào chưa có thì đọc bằng giọng máy.</p>
     <div class="row"><button class="btn ghost sm" id="re-audio">↻ Cập nhật audio</button><button class="btn ghost sm" id="dl-audio">⬇︎ Tải trước audio A2</button></div>
-    <p class="small mute" style="margin-bottom:0">Học thêm: <a href="../">Einbürgerungskurs (145 câu hỏi)</a></p></div>`;
+    <p class="small mute" style="margin-bottom:0">Học thêm: <a href="../">Einbürgerungskurs (184 câu hỏi)</a></p></div>`;
   $('#go-due').onclick = () => { setTab('vocab'); startSession(null); };
   if (gNext) $('#go-gram').onclick = () => setTab('gram', { lesson: gNext.id });
   $('#go-topic').onclick = () => setTab('speak', { sec: 'b1', id: topic.id });
